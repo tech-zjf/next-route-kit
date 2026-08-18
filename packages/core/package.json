@@ -1,0 +1,49 @@
+{
+    "name": "@next-route-kit/core",
+    "version": "0.1.0",
+    "description": "Framework-neutral request pipeline contracts for next-route-kit",
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test": "vitest run",
+        "clean": "rm -rf dist coverage"
+    },
+    "author": {
+        "name": "tech-zjf",
+        "url": "https://github.com/tech-zjf"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/tech-zjf/next-route-kit.git",
+        "directory": "packages/core"
+    },
+    "bugs": {
+        "url": "https://github.com/tech-zjf/next-route-kit/issues"
+    },
+    "homepage": "https://github.com/tech-zjf/next-route-kit/tree/main/packages/core",
+    "keywords": [
+        "nextjs",
+        "route-handler",
+        "pipeline",
+        "middleware",
+        "typescript"
+    ],
+    "license": "MIT",
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "publishConfig": {
+        "access": "public"
+    }
+}

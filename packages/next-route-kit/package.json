@@ -1,0 +1,52 @@
+{
+    "name": "next-route-kit",
+    "version": "0.1.0",
+    "description": "Composable Route Handler infrastructure for Next.js App Router",
+    "author": {
+        "name": "tech-zjf",
+        "url": "https://github.com/tech-zjf"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/tech-zjf/next-route-kit.git",
+        "directory": "packages/next-route-kit"
+    },
+    "bugs": {
+        "url": "https://github.com/tech-zjf/next-route-kit/issues"
+    },
+    "homepage": "https://github.com/tech-zjf/next-route-kit#readme",
+    "keywords": [
+        "nextjs",
+        "route-handler",
+        "app-router",
+        "middleware",
+        "typescript"
+    ],
+    "license": "MIT",
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test": "vitest run",
+        "clean": "rm -rf dist coverage"
+    },
+    "dependencies": {
+        "@next-route-kit/core": "workspace:*"
+    },
+    "publishConfig": {
+        "access": "public"
+    }
+}

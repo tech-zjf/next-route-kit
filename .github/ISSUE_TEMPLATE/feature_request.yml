@@ -1,0 +1,23 @@
+name: Feature request
+description: Propose an improvement that fits the Route Handler architecture
+title: '[Feature]: '
+body:
+    - type: textarea
+      id: problem
+      attributes:
+          label: Problem to solve
+          description: What user or project problem does this feature address?
+      validations:
+          required: true
+    - type: textarea
+      id: proposal
+      attributes:
+          label: Proposed API or behavior
+          description: Include a small usage example when possible.
+      validations:
+          required: true
+    - type: textarea
+      id: compatibility
+      attributes:
+          label: Compatibility considerations
+          description: Explain whether this affects Next.js, Edge, Core, or public package APIs.

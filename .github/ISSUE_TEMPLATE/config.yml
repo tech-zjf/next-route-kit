@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+    - name: Documentation
+      url: https://github.com/tech-zjf/next-route-kit/tree/main/docs
+      about: Read the architecture and implementation documentation first.
+    - name: Security vulnerability
+      url: https://github.com/tech-zjf/next-route-kit/security/advisories/new
+      about: Report security issues privately instead of opening a public issue.

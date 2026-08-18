@@ -1,0 +1,37 @@
+name: Bug report
+description: Report a reproducible problem in next-route-kit
+title: '[Bug]: '
+body:
+    - type: input
+      id: package
+      attributes:
+          label: Package and version
+          placeholder: 'next-route-kit@0.1.0'
+      validations:
+          required: true
+    - type: input
+      id: next-version
+      attributes:
+          label: Next.js version
+          placeholder: '15.x or 16.x'
+      validations:
+          required: true
+    - type: textarea
+      id: reproduction
+      attributes:
+          label: Reproduction
+          description: Provide the smallest code sample or repository that reproduces the issue.
+      validations:
+          required: true
+    - type: textarea
+      id: expected
+      attributes:
+          label: Expected behavior
+      validations:
+          required: true
+    - type: textarea
+      id: actual
+      attributes:
+          label: Actual behavior
+      validations:
+          required: true

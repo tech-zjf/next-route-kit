@@ -1,0 +1,36 @@
+name: Next.js compatibility report
+description: Report behavior on a specific Next.js version or runtime
+title: '[Compatibility]: '
+body:
+    - type: input
+      id: next-version
+      attributes:
+          label: Next.js version
+          placeholder: '15.5.0 or 16.0.0'
+      validations:
+          required: true
+    - type: dropdown
+      id: runtime
+      attributes:
+          label: Runtime
+          options:
+              - Node.js
+              - Edge
+              - Other Web API runtime
+      validations:
+          required: true
+    - type: dropdown
+      id: bundler
+      attributes:
+          label: Bundler
+          options:
+              - Turbopack
+              - Webpack
+              - Unknown
+    - type: textarea
+      id: result
+      attributes:
+          label: Build or runtime result
+          description: Include logs, fixture code, and the expected result.
+      validations:
+          required: true
