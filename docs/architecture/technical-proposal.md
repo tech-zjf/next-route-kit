@@ -24,8 +24,10 @@
 ```text
 Request
   -> Context
+  -> Framework Params Hydration
   -> Middleware
   -> Guard
+  -> Input Resolver
   -> Input Validation / Transformation
   -> Interceptor
   -> Handler
@@ -123,9 +125,11 @@ import { createRoute, jsonResponse } from 'next-route-kit'
 export const route = createRoute({
     plugins: [requestId(), requestLogger()],
     response: jsonResponse(),
-    errorMappers: [httpErrorMapper(), defaultErrorMapper()],
+    errorMappers: [httpErrorMapper()],
 })
 ```
+
+主包会自动追加内置 `defaultErrorMapper()`；这里只注册业务自定义映射即可。
 
 ### 4.2 `next.config.ts` 的可选职责
 
@@ -171,9 +175,12 @@ Handler-local Config
 export const route = createRoute({
     plugins: [requestId(), requestLogger(), tracing()],
     response: jsonResponse(),
-    errorMappers: [validationErrorMapper(), httpErrorMapper(), defaultErrorMapper()],
+    errorMappers: [validationErrorMapper(), httpErrorMapper()],
 })
 ```
+
+`next-route-kit` 会自动把内置 `defaultErrorMapper()` 放在用户映射之后；这里只
+注册业务自定义映射即可，避免重复配置。
 
 ### 5.2 业务域配置
 
@@ -300,36 +307,33 @@ export const adminRoute = route.extend({
 
 ## 6. 配置合并规则
 
-| 配置                | 规则                                       |
-| ------------------- | ------------------------------------------ |
-| Middleware          | Global → Scope → Route，追加执行           |
-| Guards              | Global → Scope → Route，追加执行           |
-| Input Pipes         | Global → Scope → Route，追加执行           |
-| Interceptors        | Global → Scope → Route，进入顺序；退出反向 |
-| Error Mappers       | Route → Scope → Global，首个匹配者处理     |
-| Response Serializer | Route 覆盖 Scope，Scope 覆盖 Global        |
-| Runtime             | 取所有插件能力交集                         |
-| State               | 通过 Factory 逐层扩展                      |
-| Plugin              | 按注册顺序安装                             |
+| 配置                | 规则                                             |
+| ------------------- | ------------------------------------------------ |
+| Middleware          | Global → Scope → Route，追加执行                 |
+| Guards              | Global → Scope → Route，追加执行                 |
+| Input Pipes         | Global → Scope → Route，追加执行                 |
+| Interceptors        | Global → Scope → Route，进入顺序；退出反向       |
+| Error Mappers       | Route → Scope → Global，首个匹配者处理           |
+| Response Serializer | Route 覆盖 Scope，Scope 覆盖 Global              |
+| Runtime             | 显式由 Factory/Route 指定，并校验插件声明        |
+| State               | 由应用 Middleware/Guard 写入 request-local state |
+| Plugin              | 按注册顺序安装                                   |
 
 同一个配置层内如果多个插件都提供 `responseSerializer`，Registry 会直接报错；
 显式的 Route/Scope/Global 配置仍按上表覆盖。这样可以避免插件注册顺序悄悄
 决定最终响应格式。
 
-Global 插件默认不能被路由关闭。安全相关插件可以声明：
-
-```ts
-requireUser({ mandatory: true })
-```
-
-避免某个路由因为局部配置而意外绕过安全策略。
+Global 和 Scope 配置没有路由级移除或禁用 API。这个 0.1.0 版本选择安全
+默认：继承的 Middleware、Guard、Pipe、Interceptor 和 Error Mapper 不能被
+子路由静默绕过。如果某个业务域需要不同的安全策略，应创建另一个显式的
+Factory，而不是给共享 Factory 增加 opt-out 开关。
 
 ## 7. Pipeline 生命周期
 
 ```text
 Create Context
   ↓
-Resolve params and route input source
+Hydrate Next route params (framework context only)
   ↓
 Global Route Middleware
   ↓
@@ -343,9 +347,11 @@ Scope Guards
   ↓
 Local Guards
   ↓
-Interceptors Before
+Resolve route input source
   ↓
 Input Validation / Transformation
+  ↓
+Interceptors Before
   ↓
 Business Handler
   ↓
@@ -370,8 +376,12 @@ Global Error Mapper
 Default Error Mapper
 ```
 
-参数解析和 `input` resolver 属于请求准备阶段，发生在 Middleware/Guard
-之前，但同样位于 Pipeline 的统一错误边界内；因此 Promise reject、Body
+Next 适配层会在进入 Pipeline 前先 hydrate `context.params`；这只是在填充 Next
+提供的框架上下文，不读取 Request Body，也不属于用户可配置的输入 resolver。
+因此 Middleware 和 Guard 可以直接按路由参数做日志或资源权限判断。真正的
+`input` resolver 属于请求准备阶段，发生在 Middleware/Guard 之后、Input Pipe
+之前；因此 Guard 可以在 Body 读取和解析前短路请求，Middleware 也可以先向
+request-local state 写入认证或租户信息。Promise reject、Body
 解析失败和输入 resolver 抛错都会进入 Error Mapper。请求准备只在路由声明
 需要输入时触发，未声明输入的 GET 不会主动读取 Body。
 
@@ -414,7 +424,8 @@ next-route-kit              # 普通用户安装的主包
 
 `next-route-kit` 比 `next-route-infra` 更短、更像开发者工具包，也不会暗示项目要替代 Next.js Router。
 
-发布前仍需单独确认 npm 和 GitHub 名称可用性。
+首次发布前已确认 npm Registry 中没有这四个包的已发布版本；scope 所有权和
+发布凭据仍需由维护者在 npm/GitHub 中完成一次性配置。
 
 ### 8.2 API 命名
 
@@ -439,25 +450,35 @@ next-route-kit              # 普通用户安装的主包
 ```ts
 export type RuntimeSupport = 'nodejs' | 'edge' | 'both'
 
-export type RouteParams = Record<string, string | string[]>
+export type RouteParams = Record<string, string | string[] | undefined>
 
 export interface RouteContext<TParams extends RouteParams = RouteParams, TInput = unknown, TState = Record<string, never>> {
     request: Request
     params: TParams
     input: TInput
+    inputMetadata?: InputMetadata
     state: TState
     meta: RouteMeta
 }
+
+export interface InputMetadata {
+    readonly location: 'body' | 'query' | 'params' | 'headers' | 'custom'
+    readonly name?: string
+    readonly fields?: Readonly<Record<string, InputMetadata>>
+}
 ```
 
-Runtime 能力主要通过插件静态声明。`RouteContext` 不要求 Core 自己检测 Node 或 Edge。
+Runtime 能力主要通过插件静态声明。`RouteContext` 不要求 Core 自己检测 Node 或 Edge；
+当 Factory 或 Route 指定 `runtime` 时，`RoutePluginRegistry` 会在编译期校验插件声明，
+并通过 `RuntimeIncompatiblePluginError` 给出明确诊断。这个值需要与 Next.js 路由模块的
+`export const runtime` 保持一致，包不会扫描文件或改写构建流程。
 
 ### 9.1 Route Handler
 
 ```ts
 export interface RouteOptions<TParams extends RouteParams = RouteParams, TInput = unknown, TState = Record<string, never>, TResult = unknown> {
-    input?: InputDefinition<TInput>
-    use?: readonly RouteUse[]
+    input?: RouteInputDefinition<TInput, TParams, TState>
+    use?: readonly RoutePlugin[]
     handler: RouteHandler<TParams, TInput, TState, TResult>
 }
 ```
@@ -547,6 +568,11 @@ return new Response(stream, {
 
 框架不得二次包装已经存在的 `Response`。
 
+Next 入口包默认追加一个 `defaultErrorMapper()`：它会将 `HttpError` 和非法
+JSON Body 映射为 JSON 错误响应；业务自定义 Error Mapper 仍然按 Route → Scope
+→ Global → Default 的顺序优先执行。未知异常不会暴露内部错误信息，继续交给
+Next.js 的错误边界处理。
+
 ## 11. Request Body 设计
 
 Request Body 是一次性流。框架不能让不同插件重复调用：
@@ -597,7 +623,9 @@ input: {
 `jsonBody()` 和 `textBody()` 共享同一个懒加载的 Request 文本 Promise；同一
 请求内重复读取不会再次消费流。`query()` 将重复键保留为只读数组，
 `headers()` 返回 Request Headers 的副本，避免 Handler 修改输入时影响原始
-Request。校验规则由后续的输入 Pipe 或可选适配包提供，Core 不内置具体校验库。
+Request。`InputPipe` 通过 `metadata` 参数获得输入来源；复合输入会在
+`fields` 中保留每个字段的 body/query/params/headers/custom 来源。校验规则由
+后续的输入 Pipe 或可选适配包提供，Core 不内置具体校验库。
 
 ## 12. Runtime 设计
 

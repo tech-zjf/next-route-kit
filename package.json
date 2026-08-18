@@ -28,6 +28,15 @@
         "typecheck": "turbo run typecheck",
         "test": "turbo run test",
         "clean": "turbo run clean",
+        "docs:check": "node scripts/verify-docs.mjs",
+        "verify:packed": "pnpm build && node scripts/verify-packed-consumer.mjs",
+        "verify:next:dev": "pnpm build && node scripts/verify-next-dev.mjs",
+        "verify:next:prod": "pnpm build && node scripts/verify-next-dev.mjs --production",
+        "changeset": "changeset",
+        "release:status": "changeset status --verbose",
+        "release:version": "changeset version",
+        "release:publish": "changeset publish",
+        "release:check": "git diff --check && pnpm docs:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify:packed && pnpm verify:next:prod && pnpm verify:next:dev && pnpm exec prettier --check .",
         "format": "prettier --write .",
         "lint": "eslint . --max-warnings=0",
         "prepare": "husky"
@@ -35,7 +44,7 @@
     "lint-staged": {
         "*.{js,mjs,cjs,ts,tsx}": [
             "prettier --write",
-            "eslint --max-warnings=0"
+            "eslint --max-warnings=0 --no-warn-ignored"
         ],
         "*.{json,jsonc,md,yml,yaml}": [
             "prettier --write"

@@ -1,5 +1,16 @@
-import { DuplicateResponseSerializerError } from './errors.js'
-import type { ErrorMapper, Guard, InputPipe, Interceptor, ResponseSerializer, RouteMiddleware, RoutePlugin, RoutePluginContribution } from './types.js'
+import { DuplicateResponseSerializerError, RuntimeIncompatiblePluginError } from './errors.js'
+import type {
+    ErrorMapper,
+    Guard,
+    InputPipe,
+    Interceptor,
+    ResponseSerializer,
+    RouteMiddleware,
+    RoutePlugin,
+    RoutePluginContribution,
+    RouteRuntime,
+    RuntimeSupport,
+} from './types.js'
 
 export interface RoutePluginContributionSnapshot {
     readonly middleware: readonly RouteMiddleware[]
@@ -34,12 +45,22 @@ export class RoutePluginRegistry {
             return this
         }
 
-        const child = new RoutePluginRegistry(plugins)
+        return this.compose(new RoutePluginRegistry(plugins))
+    }
+
+    /** Compose a child registry whose plugin contributions have already been installed. */
+    compose(child: RoutePluginRegistry): RoutePluginRegistry {
+        if (child.plugins.length === 0) {
+            return this
+        }
+
         return RoutePluginRegistry.fromInstalled([...this.plugins, ...child.plugins], [...this.contributions, ...child.contributions])
     }
 
     /** Aggregate contributions in explicit registration order. */
-    snapshot(): RoutePluginContributionSnapshot {
+    snapshot(runtime?: RouteRuntime): RoutePluginContributionSnapshot {
+        this.validateRuntime(runtime)
+
         const responseSerializers = this.contributions
             .map((contribution) => contribution.responseSerializer)
             .filter((serializer): serializer is ResponseSerializer => Boolean(serializer))
@@ -56,6 +77,21 @@ export class RoutePluginRegistry {
             errorMappers: this.freeze(this.contributions.flatMap((contribution) => contribution.errorMappers ?? [])),
             responseSerializer: responseSerializers[0],
         })
+    }
+
+    /** Fail early when a statically declared plugin cannot run in the target runtime. */
+    validateRuntime(runtime?: RouteRuntime): void {
+        if (runtime === undefined) {
+            return
+        }
+
+        for (const plugin of this.plugins) {
+            if (supportsRuntime(plugin.runtime, runtime)) {
+                continue
+            }
+
+            throw new RuntimeIncompatiblePluginError(plugin.name, plugin.runtime as string, runtime)
+        }
     }
 
     private freeze<T>(items: T[]): readonly T[] {
@@ -97,4 +133,8 @@ export class RoutePluginRegistry {
 
         return Object.freeze(registry) as RoutePluginRegistry
     }
+}
+
+function supportsRuntime(support: RuntimeSupport | undefined, runtime: RouteRuntime): boolean {
+    return support === undefined || support === 'both' || support === runtime
 }

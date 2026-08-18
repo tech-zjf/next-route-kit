@@ -56,3 +56,20 @@ export class DuplicateMiddlewareNextError extends Error {
         this.name = 'DuplicateMiddlewareNextError'
     }
 }
+
+export class RuntimeIncompatiblePluginError extends Error {
+    readonly pluginName: string
+    readonly pluginRuntime: string
+    readonly routeRuntime: string
+
+    constructor(pluginName: string, pluginRuntime: string, routeRuntime: string) {
+        super(
+            `Plugin "${pluginName}" supports runtime "${pluginRuntime}" but the Route Factory is configured for "${routeRuntime}". ` +
+                'Use a compatible plugin or create a separate Factory for this runtime.',
+        )
+        this.name = 'RuntimeIncompatiblePluginError'
+        this.pluginName = pluginName
+        this.pluginRuntime = pluginRuntime
+        this.routeRuntime = routeRuntime
+    }
+}

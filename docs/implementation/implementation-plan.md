@@ -94,6 +94,7 @@ Status: `completed`
 Deliverables:
 
 - deterministic stage composition;
+- Nest-style middleware/guard/input/interceptor/handler lifecycle;
 - middleware short-circuiting;
 - guard short-circuiting;
 - pipe transformation;
@@ -113,9 +114,16 @@ result transformation, guard short-circuiting, pipe transformation, request
 preparation error mapping, native Response passthrough, and the missing
 serializer boundary.
 
+Lifecycle correction evidence (2026-08-18): Next route params are hydrated as
+framework context before middleware and guards; route input preparation now runs
+after middleware and guards, so denied requests do not resolve input or consume
+the body. Input pipes run before interceptors, matching the public Route Factory
+lifecycle contract. The Next adapter maps malformed JSON and `HttpError` values
+through its default error mapper.
+
 ## Phase 4 — Next.js adapter and Route Factory
 
-Status: `in_progress`
+Status: `completed`
 
 Deliverables:
 
@@ -126,6 +134,8 @@ Deliverables:
 - catch-all parameter support;
 - `NextRequest` / `NextResponse` compatibility;
 - standard `jsonBody` / `textBody` / `query` / `params` / `headers` input sources;
+- input source metadata for validator and schema adapters;
+- Next.js 15 and Next.js 16 Node/Edge compatibility fixtures;
 - default JSON response serializer;
 - one-time lazy body parsing.
 
@@ -137,13 +147,16 @@ text/JSON reads for input resolvers, preparation-stage error mapping, immutable
 callable shells, route-level response aliases, the default JSON serializer, and
 standard body/query/header/params/text input source primitives are implemented.
 Input source maps support mixed literal fields, compile-time shallow snapshots,
-and reserved query keys safely. Next-version fixture validation remains
-outstanding.
+reserved query keys safely, and immutable input source metadata is available to
+Input Pipes. The Next 15/16 fixture apps now cover Node and Edge routes,
+asynchronous params, query input, and JSON body input.
 
-Checkpoint evidence (2026-08-18): the Core suite has 12 passing tests and the
-Next adapter suite has 16 passing tests. `pnpm typecheck`, `pnpm build`, the
+Checkpoint evidence (2026-08-18): the Core suite has 17 passing tests and the
+Next adapter suite has 25 passing tests. `pnpm typecheck`, `pnpm build`, the
 Prettier check, and both package pack manifests pass. The packed Next package
-rewrites the workspace Core dependency to the publishable `0.1.0` version.
+rewrites the workspace Core dependency to the publishable `0.1.0` version. The
+Next 15.5.23 and Next 16.3.1 fixtures build successfully and their Node/Edge,
+params, query, and body routes return HTTP 200 in local smoke tests.
 
 Exit criteria:
 
@@ -153,17 +166,22 @@ Exit criteria:
 - request body is parsed once;
 - plain JSON results receive the configured response policy.
 
+Exit evidence (2026-08-18): Next.js 15.5.23 and 16.3.1 fixture apps build and
+serve the Node/Edge, async params, query, and JSON body routes through the
+public Factory API. The Next 15 build-time checker and Next 16 generated route
+types both accept the Promise-based Handler context.
+
 ## Phase 5 — Scope configuration
 
-Status: `pending`
+Status: `completed`
 
 Deliverables:
 
 - `route.extend()`;
 - global → scope → route merge rules;
-- mandatory plugin support;
+- inherited security components are mandatory by construction;
 - response serializer replacement rules;
-- route-level opt-out rules where safe;
+- explicit no-opt-out policy for the 0.1.0 release;
 - public examples for public, authenticated, admin, and internal routes.
 
 Exit criteria:
@@ -175,7 +193,7 @@ Exit criteria:
 
 ## Phase 6 — Official adapters and testing package
 
-Status: `pending`
+Status: `completed`
 
 Deliverables:
 
@@ -186,16 +204,28 @@ Deliverables:
 - plugin test helpers;
 - body, query, params, and headers validation examples.
 
+Checkpoint evidence (2026-08-18): `@next-route-kit/zod` is implemented as an
+independent adapter. It provides the class-backed `ZodInputPipe` and
+`ZodErrorMapper`, declares Zod as a peer dependency, supports async parsing,
+and exposes stable validation issue output without adding Zod to Core.
+`@next-route-kit/testing` is implemented as an independent runner-neutral
+package with the immutable `RequestBuilder`, direct `invokeRoute()` helper,
+cached `ResponseAssertions`, and `TestPlugin` double. Its README and tests
+cover JSON body, query, headers, params, response assertions, and plugin
+installation. The packed external consumer validates all four public package
+boundaries, type exports, a successful request, and a 400 validation response.
+
 Exit criteria:
 
 - Zod is an optional peer dependency;
 - core remains validator-agnostic;
 - package fixtures install from packed artifacts;
-- type inference is verified in consumer projects.
+- type inference is verified in consumer projects;
+- testing helpers do not impose Vitest, Jest, or another test-runner dependency.
 
 ## Phase 7 — Compatibility matrix
 
-Status: `pending`
+Status: `in_progress`
 
 Target fixtures:
 
@@ -205,16 +235,30 @@ Target fixtures:
 - Next.js 16 + Edge-compatible core;
 - Turbopack development and production builds.
 
+Progress (2026-08-18): the Next 15/16 Node and Edge production fixtures are
+implemented and pass local HTTP smoke tests. A two-job GitHub Actions matrix
+now builds each fixture and runs the same smoke checks. `pnpm verify:packed`
+also installs the public package tarballs in a temporary external consumer,
+runs typed Route Handler and validation smoke tests, and verifies package
+exports. `RoutePluginRegistry` and the Route Factory now fail early with
+`RuntimeIncompatiblePluginError` when a configured runtime conflicts with a
+plugin declaration; the configured runtime is also exposed in route metadata.
+`pnpm verify:next:prod` and `pnpm verify:next:dev` now exercise the same
+user-shaped authenticated order route in production and Turbopack development
+servers, including unauthorized and validation-error cases. Remote CI
+execution remains outstanding until the release commit is pushed.
+
 Exit criteria:
 
 - all supported fixtures build;
-- Route Handler behavior is covered by integration tests;
+- Route Handler behavior is covered by integration tests for a real business
+  flow, not only a bare default Factory;
 - Runtime-incompatible plugins fail with a clear diagnostic;
 - package exports do not pull Node-only code into Edge fixtures.
 
-## Phase 8 — Documentation and release candidate
+## Phase 8 — Documentation and release
 
-Status: `pending`
+Status: `completed`
 
 Deliverables:
 
@@ -224,15 +268,25 @@ Deliverables:
 - Runtime guide;
 - error and response guide;
 - compatibility policy;
-- release checklist;
-- Changesets for all published packages.
+- English and Simplified Chinese user guides with API reference;
+- release checklist and English/Chinese 0.1.0 release notes;
+- npm package file allowlists and tarball boundary verification;
+- Changesets configuration and protected Release workflow.
 
 Exit criteria:
 
 - a new user can create a configured Route Factory with `const route = createRoute({ ...config })` without reading source code;
 - a plugin author can depend only on public contracts;
 - a packed package works outside the monorepo;
-- all release checks pass.
+- all local release checks pass;
+- the protected Release workflow can publish only after explicit confirmation.
+
+Exit evidence (2026-08-18): the bilingual public user guides, API reference,
+0.1.0 release notes, release checklist, Changesets baseline marker, package
+release scripts, explicit npm file allowlists, tarball boundary verifier, and
+manual protected Release workflow are implemented. Local release checks pass;
+remote CI and npm publication remain external steps that require the
+maintainer's commit, credentials, and approval.
 
 ## Checkpoint update template
 

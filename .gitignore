@@ -2,5 +2,12 @@ node_modules/
 dist/
 coverage/
 .turbo/
+.next/
+*.tsbuildinfo
+.npmrc
+npm-debug.log*
+pnpm-debug.log*
+apps/*/AGENTS.md
+apps/*/CLAUDE.md
 .changeset/pre.json
 .DS_Store

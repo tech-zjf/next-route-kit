@@ -17,9 +17,11 @@ Use an application-owned module, located wherever the application prefers, that 
 export const route = createRoute({
     plugins: [requestId(), requestLogger()],
     response: jsonResponse(),
-    errorMappers: [defaultErrorMapper()],
 })
 ```
+
+主包会自动追加内置 `defaultErrorMapper()`；此处只需要注册业务自定义的
+Error Mapper。
 
 The configuration module does not have to be named `route-infra.config.ts` or live at the project root. Route files import the Factory and export the resulting handler:
 

@@ -24,7 +24,7 @@ next-route-kit              # recommended user-facing package
 @next-route-kit/testing     # test helpers
 ```
 
-`next-route-kit` communicates a toolkit rather than a replacement router or a full backend framework. The exact npm and GitHub name must be checked before the first publish.
+`next-route-kit` communicates a toolkit rather than a replacement router or a full backend framework. The exact npm and GitHub name must be checked before the first publish. A read-only npm registry check on 2026-08-18 found no published versions for the four proposed package names; this does not establish ownership of the scoped name, so the release checklist still requires confirming `@next-route-kit` scope access before publishing.
 
 ## Public terminology
 

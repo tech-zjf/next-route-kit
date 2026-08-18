@@ -1,0 +1,62 @@
+{
+    "name": "@next-route-kit/zod",
+    "version": "0.1.0",
+    "description": "Optional Zod validation adapter for next-route-kit",
+    "author": {
+        "name": "tech-zjf",
+        "url": "https://github.com/tech-zjf"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/tech-zjf/next-route-kit.git",
+        "directory": "packages/zod"
+    },
+    "bugs": {
+        "url": "https://github.com/tech-zjf/next-route-kit/issues"
+    },
+    "homepage": "https://github.com/tech-zjf/next-route-kit/tree/main/packages/zod",
+    "keywords": [
+        "nextjs",
+        "route-handler",
+        "zod",
+        "validation",
+        "typescript"
+    ],
+    "license": "MIT",
+    "engines": {
+        "node": ">=18.18.0"
+    },
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test": "vitest run",
+        "clean": "rm -rf dist coverage"
+    },
+    "dependencies": {
+        "@next-route-kit/core": "workspace:*"
+    },
+    "peerDependencies": {
+        "zod": "^4.0.0"
+    },
+    "devDependencies": {
+        "zod": "^4.4.3"
+    },
+    "publishConfig": {
+        "access": "public"
+    }
+}

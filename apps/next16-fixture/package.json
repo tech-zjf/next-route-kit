@@ -1,0 +1,25 @@
+{
+    "name": "@next-route-kit/fixture-next16",
+    "private": true,
+    "version": "0.1.0",
+    "type": "module",
+    "scripts": {
+        "build": "next build",
+        "dev": "next dev",
+        "start": "next start",
+        "typecheck": "tsc --noEmit",
+        "clean": "rm -rf .next"
+    },
+    "dependencies": {
+        "next": "^16.0.0",
+        "next-route-kit": "workspace:*",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^22.0.0",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
+        "typescript": "^5.9.2"
+    }
+}

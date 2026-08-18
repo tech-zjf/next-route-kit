@@ -19,6 +19,31 @@ const jsonSerializer = {
 }
 
 describe('executeRoutePipeline', () => {
+    it('passes route input metadata to input pipes', async () => {
+        const inputMetadata = { location: 'body' as const, name: 'json-body' }
+        let receivedMetadata: unknown
+
+        const response = await executeRoutePipeline(
+            {
+                inputPipes: [
+                    {
+                        name: 'metadata-observer',
+                        transform(value, metadata) {
+                            receivedMetadata = metadata
+                            return value
+                        },
+                    },
+                ],
+                responseSerializer: jsonSerializer,
+                handler: (context) => context.input,
+            },
+            { ...createContext(), inputMetadata },
+        )
+
+        expect(receivedMetadata).toBe(inputMetadata)
+        expect(await response.json()).toEqual({ value: 'raw' })
+    })
+
     it('runs middleware, guards, pipes, interceptors, and the handler in order', async () => {
         const events: string[] = []
 
@@ -73,8 +98,93 @@ describe('executeRoutePipeline', () => {
             createContext(),
         )
 
-        expect(events).toEqual(['middleware:before', 'guard', 'interceptor:before', 'pipe', 'handler', 'interceptor:after', 'middleware:after'])
+        expect(events).toEqual(['middleware:before', 'guard', 'pipe', 'interceptor:before', 'handler', 'interceptor:after', 'middleware:after'])
         expect(await response.json()).toEqual({ value: 'parsed' })
+    })
+
+    it('runs preparation after guards and before pipes and interceptors', async () => {
+        const events: string[] = []
+        const context = createContext()
+
+        const response = await new RoutePipeline({
+            guards: [
+                {
+                    name: 'guard',
+                    canActivate() {
+                        events.push('guard')
+                        return true
+                    },
+                },
+            ],
+            inputPipes: [
+                {
+                    name: 'pipe',
+                    transform(value) {
+                        events.push('pipe')
+                        return value
+                    },
+                },
+            ],
+            interceptors: [
+                {
+                    name: 'interceptor',
+                    async intercept(_context, next) {
+                        events.push('interceptor:before')
+                        const result = await next()
+                        events.push('interceptor:after')
+                        return result
+                    },
+                },
+            ],
+            responseSerializer: jsonSerializer,
+            handler() {
+                events.push('handler')
+                return { ok: true }
+            },
+        }).execute(context, () => {
+            events.push('prepare')
+            context.input = { value: 'prepared' }
+        })
+
+        expect(events).toEqual(['guard', 'prepare', 'pipe', 'interceptor:before', 'handler', 'interceptor:after'])
+        expect(await response.json()).toEqual({ ok: true })
+    })
+
+    it('hydrates adapter context before middleware and guards', async () => {
+        const events: string[] = []
+        const context = createContext()
+
+        const response = await new RoutePipeline({
+            middleware: [
+                {
+                    name: 'middleware',
+                    handle(currentContext, next) {
+                        events.push(`middleware:${currentContext.params.id}`)
+                        return next()
+                    },
+                },
+            ],
+            guards: [
+                {
+                    name: 'guard',
+                    canActivate(currentContext) {
+                        events.push(`guard:${currentContext.params.id}`)
+                        return true
+                    },
+                },
+            ],
+            responseSerializer: jsonSerializer,
+            handler() {
+                events.push('handler')
+                return { ok: true }
+            },
+        }).execute(context, undefined, () => {
+            events.push('context')
+            context.params = { id: '42' }
+        })
+
+        expect(events).toEqual(['context', 'middleware:42', 'guard:42', 'handler'])
+        expect(await response.json()).toEqual({ ok: true })
     })
 
     it('lets middleware transform the handler result before serialization', async () => {

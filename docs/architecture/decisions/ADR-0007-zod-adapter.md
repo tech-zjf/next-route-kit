@@ -1,0 +1,52 @@
+# ADR-0007: Keep Zod validation in an optional adapter package
+
+## Status
+
+Accepted.
+
+## Context
+
+The Core pipeline needs a stable `InputPipe` contract, but it should not choose
+one schema library for every application. Importing Zod from Core would make
+the base package larger, couple its release surface to Zod, and make a future
+validator adapter harder to add. Validation errors also need a predictable
+mapping into the existing `ErrorMapper` stage.
+
+## Decision
+
+Publish `@next-route-kit/zod` as an independent package with Zod as a peer
+dependency. The first adapter exposes:
+
+- `ZodInputPipe` / `zodPipe(schema)` for async validation and parsed-output
+  replacement;
+- `ZodValidationError` with normalized, immutable issues and input metadata;
+- `ZodErrorMapper` / `zodErrorMapper(options)` for configurable JSON responses.
+
+The adapter depends only on `@next-route-kit/core` contracts. Core and
+`next-route-kit` do not import Zod. The adapter uses the async parse API so
+schemas with asynchronous refinements are supported.
+
+## Consequences
+
+Positive:
+
+- applications opt in to Zod and keep the base install validator-agnostic;
+- the same pipe and error mapper can be registered globally, on a scope, or on
+  one route through the existing Factory configuration;
+- a future Valibot, ArkType, or custom adapter can implement the same Core
+  contracts without changing the pipeline.
+
+Trade-off:
+
+- the parsed output of an `InputPipe` is a runtime pipeline transformation; the
+  route handler's static input type still comes from its `input` definition.
+  Applications should use `z.input`/`z.output` explicitly when a schema
+  transforms a value.
+
+## Rejected alternatives
+
+- Put Zod directly in `next-route-kit`: rejected because it makes validation a
+  mandatory dependency and mixes framework adapter and schema concerns.
+- Make Core depend on a generic schema interface with built-in parsing:
+  rejected because Core should only own lifecycle contracts, not validation
+  policy or error response shape.

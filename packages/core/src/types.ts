@@ -4,7 +4,7 @@ export type RouteRuntime = 'nodejs' | 'edge'
 
 export type RuntimeSupport = RouteRuntime | 'both'
 
-export type RouteParams = Record<string, string | string[]>
+export type RouteParams = Record<string, string | string[] | undefined>
 
 export interface RouteMeta {
     readonly method?: string
@@ -16,12 +16,14 @@ export interface RouteMeta {
 export interface InputMetadata {
     readonly location: 'body' | 'query' | 'params' | 'headers' | 'custom'
     readonly name?: string
+    readonly fields?: Readonly<Record<string, InputMetadata>>
 }
 
 export interface RouteContext<TParams extends RouteParams = RouteParams, TInput = unknown, TState = Record<string, never>> {
     request: Request
     params: TParams
     input: TInput
+    inputMetadata?: InputMetadata
     state: TState
     meta: RouteMeta
 }

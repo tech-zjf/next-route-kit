@@ -35,3 +35,118 @@ jobs:
               run: pnpm test
             - name: Check formatting
               run: pnpm exec prettier --check .
+            - name: Check documentation links and language parity
+              run: pnpm docs:check
+
+    compatibility:
+        name: ${{ matrix.name }} compatibility
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - name: Next.js 15
+                      package: '@next-route-kit/fixture-next15'
+                      port: 3115
+                    - name: Next.js 16
+                      package: '@next-route-kit/fixture-next16'
+                      port: 3116
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 10.26.0
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: pnpm
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+            - name: Build fixture and workspace dependencies
+              run: pnpm --filter "${{ matrix.package }}..." build
+            - name: Run Route Handler smoke tests
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  fixture_log="${RUNNER_TEMP}/next-route-kit-${{ matrix.port }}.log"
+                  pnpm --filter "${{ matrix.package }}" exec next start -p "${{ matrix.port }}" >"${fixture_log}" 2>&1 &
+                  fixture_pid=$!
+                  trap 'kill "${fixture_pid}"' EXIT
+
+                  for attempt in {1..30}; do
+                      if curl --fail --silent "http://127.0.0.1:${{ matrix.port }}/api/node?mode=ci" >/dev/null; then
+                          break
+                      fi
+
+                      if [ "${attempt}" -eq 30 ]; then
+                          cat "${fixture_log}"
+                          exit 1
+                      fi
+
+                      sleep 1
+                  done
+
+                  curl --fail --silent "http://127.0.0.1:${{ matrix.port }}/api/node?mode=ci" | grep -F '"runtime":"nodejs"'
+                  curl --fail --silent "http://127.0.0.1:${{ matrix.port }}/api/edge?mode=ci" | grep -F '"runtime":"edge"'
+                  curl --fail --silent "http://127.0.0.1:${{ matrix.port }}/api/params/42" | grep -F '"id":"42"'
+                  curl --fail --silent -X POST "http://127.0.0.1:${{ matrix.port }}/api/echo" \
+                      -H 'content-type: application/json' \
+                      -H 'x-request-id: ci-echo' \
+                      --data '{"message":"ci"}' | grep -F '"echo":"ci"'
+                  curl --fail --silent --show-error -X POST "http://127.0.0.1:${{ matrix.port }}/api/accounts/acct-7/orders?preview=true" \
+                      -H 'authorization: Bearer fixture-token' \
+                      -H 'content-type: application/json' \
+                      -H 'x-request-id: ci-order' \
+                      --data '{"sku":"sku-42","quantity":2}' | grep -F '"orderId":"order-fixture-user-sku-42"'
+                  if curl --silent --show-error -X POST "http://127.0.0.1:${{ matrix.port }}/api/accounts/acct-7/orders" \
+                      -H 'content-type: application/json' \
+                      -H 'x-request-id: ci-anonymous' \
+                      --data 'not-json' | grep -F '"code":"UNAUTHORIZED"'; then
+                      echo "Unauthenticated order request was rejected as expected."
+                  else
+                      echo "Unauthenticated order request was not rejected as expected." >&2
+                      exit 1
+                  fi
+
+    packed-consumer:
+        name: packed external consumer
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 10.26.0
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: pnpm
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+            - name: Verify packed packages in an external consumer
+              run: pnpm verify:packed
+
+    turbopack-development:
+        name: Turbopack development compatibility
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 10.26.0
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: pnpm
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+            - name: Verify Next.js 15 and 16 Turbopack development servers
+              run: pnpm verify:next:dev

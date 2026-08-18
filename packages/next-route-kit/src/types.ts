@@ -11,6 +11,7 @@ import type {
     RouteMiddleware,
     RouteParams,
     RoutePlugin,
+    RouteRuntime,
 } from '@next-route-kit/core'
 import type { ResolvedRouteInput, RouteInputDefinition } from './input.js'
 
@@ -19,13 +20,14 @@ export type DefaultRouteState = Record<string, never>
 export type AnyRouteContext<TState> = RouteContext<any, any, TState>
 
 export interface NextRouteHandlerContext<TParams extends RouteParams = RouteParams> {
-    readonly params: Promise<TParams> | TParams
+    readonly params: Promise<TParams>
 }
 
-export type NextRouteHandler<TParams extends RouteParams = RouteParams> = (
-    request: Request,
-    context?: NextRouteHandlerContext<TParams>,
-) => MaybePromise<Response>
+export interface NextRouteHandler<TParams extends RouteParams = RouteParams> {
+    (request: Request): MaybePromise<Response>
+    (request: Request, context: { readonly params: TParams }): MaybePromise<Response>
+    (request: Request, context: NextRouteHandlerContext<TParams>): MaybePromise<Response>
+}
 
 export interface RouteInputContext<TParams extends RouteParams = RouteParams, TState = DefaultRouteState> {
     readonly request: Request
@@ -42,6 +44,8 @@ export type RouteInputResolver<TParams extends RouteParams = RouteParams, TInput
 ) => MaybePromise<TInput>
 
 export interface RouteFactoryConfig<TState = DefaultRouteState> extends RouteConfig<AnyRouteContext<TState>, unknown> {
+    /** Runtime target used for static plugin compatibility diagnostics. */
+    readonly runtime?: RouteRuntime
     /** User-facing alias for responseSerializer. */
     readonly response?: ResponseSerializer<unknown, AnyRouteContext<TState>>
 }
@@ -50,6 +54,8 @@ export interface RouteOptions<TParams extends RouteParams = RouteParams, TInput 
     AnyRouteContext<TState>,
     TResult
 > {
+    /** Route-level runtime target used for static plugin compatibility diagnostics. */
+    readonly runtime?: RouteRuntime
     readonly input?: RouteInputDefinition<TInput, TParams, TState>
     /** User-facing alias for a route-local responseSerializer. */
     readonly response?: ResponseSerializer<unknown, AnyRouteContext<TState>>

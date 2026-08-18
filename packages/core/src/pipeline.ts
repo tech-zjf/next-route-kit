@@ -1,5 +1,16 @@
 import { DuplicateMiddlewareNextError, MissingResponseSerializerError, forbidden } from './errors.js'
-import type { AnyRouteContext, ErrorMapper, Guard, InputPipe, Interceptor, MaybePromise, ResponseSerializer, RouteHandler, RouteMiddleware } from './types.js'
+import type {
+    AnyRouteContext,
+    ErrorMapper,
+    Guard,
+    InputMetadata,
+    InputPipe,
+    Interceptor,
+    MaybePromise,
+    ResponseSerializer,
+    RouteHandler,
+    RouteMiddleware,
+} from './types.js'
 
 export interface RoutePipelineDefinition<TContext extends AnyRouteContext = AnyRouteContext, TResult = unknown> {
     readonly middleware?: readonly RouteMiddleware<TContext>[]
@@ -12,6 +23,13 @@ export interface RoutePipelineDefinition<TContext extends AnyRouteContext = AnyR
 }
 
 export type RoutePreparation<TContext extends AnyRouteContext = AnyRouteContext> = (context: TContext) => MaybePromise<void>
+
+/**
+ * Adapter-owned context hydration that must complete before middleware runs.
+ * This is intentionally separate from route input preparation: hydrating
+ * framework metadata such as dynamic params must not consume request input.
+ */
+export type RouteContextPreparation<TContext extends AnyRouteContext = AnyRouteContext> = RoutePreparation<TContext>
 
 function isResponse(value: unknown): value is Response {
     return typeof Response !== 'undefined' && value instanceof Response
@@ -44,8 +62,14 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
         this.handler = definition.handler
     }
 
-    /** Execute the compiled pipeline for one request context. */
-    async execute(context: TContext, prepare?: RoutePreparation<TContext>): Promise<Response> {
+    /**
+     * Execute the compiled pipeline for one request context.
+     *
+     * The context preparation callback hydrates framework metadata before
+     * middleware. The input preparation callback resolves route input after
+     * middleware and guards, but before input pipes and interceptors.
+     */
+    async execute(context: TContext, prepare?: RoutePreparation<TContext>, prepareContext?: RouteContextPreparation<TContext>): Promise<Response> {
         const runProtectedStages = async (): Promise<unknown> => {
             const guardResponse = await this.runGuards(context)
 
@@ -53,14 +77,14 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
                 return guardResponse
             }
 
-            return this.runInterceptors(context, async () => {
-                await this.runInputPipes(context)
-                return this.handler(context)
-            })
+            await prepare?.(context)
+            await this.runInputPipes(context)
+
+            return this.runInterceptors(context, async () => this.handler(context))
         }
 
         try {
-            await prepare?.(context)
+            await prepareContext?.(context)
             const result = await this.runMiddleware(context, runProtectedStages)
             return this.serializeResult(result, context)
         } catch (error) {
@@ -135,9 +159,10 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
 
     private async runInputPipes(context: TContext): Promise<void> {
         let input: unknown = context.input
+        const metadata: InputMetadata = context.inputMetadata ?? { location: 'custom', name: 'route-input' }
 
         for (const pipe of this.inputPipes) {
-            input = await pipe.transform(input, { location: 'custom', name: 'route-input' }, context)
+            input = await pipe.transform(input, metadata, context)
             context.input = input as TContext['input']
         }
     }

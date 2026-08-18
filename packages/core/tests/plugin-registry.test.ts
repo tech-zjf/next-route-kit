@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DuplicateResponseSerializerError, RoutePluginRegistry } from '../src/index.js'
+import { DuplicateResponseSerializerError, RoutePluginRegistry, RuntimeIncompatiblePluginError } from '../src/index.js'
 
 describe('RoutePluginRegistry', () => {
     it('installs plugins once and aggregates contributions in registration order', () => {
@@ -86,6 +86,25 @@ describe('RoutePluginRegistry', () => {
         expect(registry.extend()).toBe(registry)
     })
 
+    it('composes an installed child registry without reinstalling its plugins', () => {
+        let installCount = 0
+        const parent = new RoutePluginRegistry()
+        const child = new RoutePluginRegistry([
+            {
+                name: 'child',
+                install() {
+                    installCount += 1
+                    return {}
+                },
+            },
+        ])
+
+        const composed = parent.compose(child)
+
+        expect(installCount).toBe(1)
+        expect(composed.plugins.map((plugin) => plugin.name)).toEqual(['child'])
+    })
+
     it('rejects multiple response serializers in one plugin scope', () => {
         const registry = new RoutePluginRegistry([
             {
@@ -114,5 +133,28 @@ describe('RoutePluginRegistry', () => {
 
         expect(() => registry.snapshot()).toThrow(DuplicateResponseSerializerError)
         expect(() => registry.snapshot()).toThrow('first, second')
+    })
+
+    it('rejects plugins that do not support the configured runtime', () => {
+        const registry = new RoutePluginRegistry([
+            {
+                name: 'node-database',
+                runtime: 'nodejs',
+                install() {
+                    return {}
+                },
+            },
+            {
+                name: 'portable-tracing',
+                runtime: 'both',
+                install() {
+                    return {}
+                },
+            },
+        ])
+
+        expect(() => registry.snapshot('edge')).toThrow(RuntimeIncompatiblePluginError)
+        expect(() => registry.snapshot('edge')).toThrow('node-database')
+        expect(() => registry.snapshot('nodejs')).not.toThrow()
     })
 })

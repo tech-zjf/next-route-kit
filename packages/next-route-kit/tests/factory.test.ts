@@ -1,7 +1,59 @@
 import { describe, expect, it } from 'vitest'
-import { createRoute, Factory, headers, jsonBody, params, query, textBody } from '../src/index.js'
+import { createRoute, Factory, headers, jsonBody, params, query, RuntimeIncompatiblePluginError, textBody } from '../src/index.js'
 
 describe('createRoute', () => {
+    it('exposes source metadata for composed input maps', async () => {
+        let receivedMetadata: unknown
+        const route = createRoute({
+            inputPipes: [
+                {
+                    name: 'metadata-observer',
+                    transform(value, metadata) {
+                        receivedMetadata = metadata
+                        return value
+                    },
+                },
+            ],
+        })
+        const POST = route({
+            input: {
+                payload: jsonBody<{ ok: boolean }>(),
+                filter: query(),
+                staticValue: 'fixed',
+            },
+            handler: ({ input }) => input,
+        })
+
+        const response = await POST(
+            new Request('https://example.test/input?filter=active', {
+                method: 'POST',
+                body: JSON.stringify({ ok: true }),
+            }),
+        )
+        const metadata = receivedMetadata as {
+            location: string
+            name?: string
+            fields?: Record<string, { location: string; name?: string }>
+        }
+
+        expect(metadata).toEqual({
+            location: 'custom',
+            name: 'route-input',
+            fields: {
+                payload: { location: 'body', name: 'json-body' },
+                filter: { location: 'query', name: 'query' },
+                staticValue: { location: 'custom', name: 'staticValue' },
+            },
+        })
+        expect(Object.isFrozen(metadata)).toBe(true)
+        expect(Object.isFrozen(metadata.fields)).toBe(true)
+        expect(await response.json()).toEqual({
+            payload: { ok: true },
+            filter: { filter: 'active' },
+            staticValue: 'fixed',
+        })
+    })
+
     it('creates a native-compatible handler with global configuration', async () => {
         const events: string[] = []
         const route = createRoute({
@@ -37,6 +89,215 @@ describe('createRoute', () => {
         expect(response.status).toBe(200)
         expect(await response.json()).toEqual({ ok: true })
         expect(events).toEqual(['before', '42', 'after'])
+    })
+
+    it('runs middleware and guards before input resolution, then pipes before interceptors', async () => {
+        const events: string[] = []
+        const route = createRoute({
+            middleware: [
+                {
+                    name: 'middleware',
+                    handle(_context, next) {
+                        events.push('middleware')
+                        return next()
+                    },
+                },
+            ],
+            guards: [
+                {
+                    name: 'guard',
+                    canActivate() {
+                        events.push('guard')
+                        return true
+                    },
+                },
+            ],
+            inputPipes: [
+                {
+                    name: 'pipe',
+                    transform(value) {
+                        events.push('pipe')
+                        return value
+                    },
+                },
+            ],
+            interceptors: [
+                {
+                    name: 'interceptor',
+                    async intercept(_context, next) {
+                        events.push('interceptor:before')
+                        const result = await next()
+                        events.push('interceptor:after')
+                        return result
+                    },
+                },
+            ],
+        })
+        const GET = route({
+            input: () => {
+                events.push('input')
+                return { ok: true }
+            },
+            handler: () => {
+                events.push('handler')
+                return { ok: true }
+            },
+        })
+
+        const response = await GET(new Request('https://example.test/lifecycle'))
+
+        expect(events).toEqual(['middleware', 'guard', 'input', 'pipe', 'interceptor:before', 'handler', 'interceptor:after'])
+        expect(await response.json()).toEqual({ ok: true })
+    })
+
+    it('does not resolve input when a guard denies the request', async () => {
+        let inputCalls = 0
+        const POST = createRoute({
+            guards: [
+                {
+                    name: 'deny',
+                    canActivate: () => false,
+                },
+            ],
+        })({
+            input: () => {
+                inputCalls += 1
+                return { ok: true }
+            },
+            handler: () => ({ ok: true }),
+        })
+
+        const response = await POST(new Request('https://example.test/guarded', { method: 'POST' }))
+
+        expect(response.status).toBe(403)
+        expect(inputCalls).toBe(0)
+    })
+
+    it('hydrates Next params before middleware and guards', async () => {
+        const events: string[] = []
+        const GET = createRoute({
+            middleware: [
+                {
+                    name: 'params-middleware',
+                    handle(context, next) {
+                        events.push(`middleware:${context.params.id}`)
+                        return next()
+                    },
+                },
+            ],
+            guards: [
+                {
+                    name: 'params-guard',
+                    canActivate(context) {
+                        events.push(`guard:${context.params.id}`)
+                        return true
+                    },
+                },
+            ],
+        })({
+            input: ({ params: routeParams }) => {
+                events.push(`input:${routeParams.id}`)
+                return routeParams
+            },
+            handler: ({ input }) => ({ id: input.id }),
+        })
+
+        const response = await GET(new Request('https://example.test/users/42'), {
+            params: Promise.resolve({ id: '42' }),
+        })
+
+        expect(events).toEqual(['middleware:42', 'guard:42', 'input:42'])
+        expect(await response.json()).toEqual({ id: '42' })
+    })
+
+    it('supports optional catch-all params in input sources', async () => {
+        const GET = createRoute()({
+            input: params<{ slug: string[] | undefined }>(),
+            handler: ({ input }) => ({ hasSlug: input.slug !== undefined }),
+        })
+
+        const response = await GET(new Request('https://example.test/docs'), {
+            params: Promise.resolve({ slug: undefined }),
+        })
+
+        expect(await response.json()).toEqual({ hasSlug: false })
+    })
+
+    it('maps malformed JSON bodies to a bad request response by default', async () => {
+        const POST = createRoute()({
+            input: jsonBody(),
+            handler: () => ({ ok: true }),
+        })
+
+        const response = await POST(
+            new Request('https://example.test/malformed-json', {
+                method: 'POST',
+                body: 'not-json',
+            }),
+        )
+
+        expect(response.status).toBe(400)
+        expect(await response.json()).toEqual({
+            code: 'INVALID_JSON',
+            message: 'Request body must contain valid JSON',
+        })
+    })
+
+    it('fails early with a clear diagnostic for an incompatible global plugin', () => {
+        expect(() =>
+            createRoute({
+                runtime: 'edge',
+                plugins: [
+                    {
+                        name: 'node-database',
+                        runtime: 'nodejs',
+                        install() {
+                            return {}
+                        },
+                    },
+                ],
+            }),
+        ).toThrow(RuntimeIncompatiblePluginError)
+
+        expect(() =>
+            createRoute({
+                runtime: 'edge',
+                plugins: [
+                    {
+                        name: 'node-database',
+                        runtime: 'nodejs',
+                        install() {
+                            return {}
+                        },
+                    },
+                ],
+            }),
+        ).toThrow('Use a compatible plugin or create a separate Factory')
+    })
+
+    it('validates inherited plugins when a scope selects a runtime', () => {
+        const route = createRoute({
+            plugins: [
+                {
+                    name: 'node-database',
+                    runtime: 'nodejs',
+                    install() {
+                        return {}
+                    },
+                },
+            ],
+        })
+
+        expect(() => route.extend({ runtime: 'edge' })).toThrow('node-database')
+    })
+
+    it('exposes the configured runtime in route metadata', async () => {
+        const route = createRoute({ runtime: 'edge' })
+        const GET = route({ handler: ({ meta }) => ({ runtime: meta.runtime }) })
+
+        const response = await GET(new Request('https://example.test/runtime'))
+
+        expect(await response.json()).toEqual({ runtime: 'edge' })
     })
 
     it('keeps factories immutable and applies scope configuration through extend', async () => {

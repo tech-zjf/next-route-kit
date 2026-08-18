@@ -4,10 +4,16 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
     {
-        ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', '**/.turbo/**'],
+        ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', '**/.turbo/**', '**/.next/**', '**/next-env.d.ts'],
     },
     eslint.configs.recommended,
     ...tseslint.configs.recommended,
+    {
+        files: ['**/*.{js,mjs,cjs}'],
+        languageOptions: {
+            globals: globals.node,
+        },
+    },
     {
         files: ['**/*.{ts,tsx}'],
         languageOptions: {

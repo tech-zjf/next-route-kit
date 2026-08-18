@@ -1,4 +1,5 @@
 export { createRoute, Factory, jsonResponse } from './factory.js'
+export { defaultErrorMapper, DefaultErrorMapper, InvalidJsonBodyError } from './errors.js'
 export { InputSource, body, defineInputSource, headers, jsonBody, params, query, textBody } from './input.js'
 export type { InputSourceResolver, QueryInput, ResolvedRouteInput, RouteInputDefinition, RouteInputSourceMap } from './input.js'
 export type {
@@ -23,6 +24,7 @@ export {
     forbidden,
     HttpError,
     MissingResponseSerializerError,
+    RuntimeIncompatiblePluginError,
     unauthorized,
 } from '@next-route-kit/core'
 export type {
