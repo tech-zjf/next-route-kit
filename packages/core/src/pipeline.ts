@@ -1,12 +1,12 @@
 import { DuplicateMiddlewareNextError, MissingResponseSerializerError, forbidden } from './errors.js'
 import type {
     AnyRouteContext,
-    ErrorMapper,
+    ArgumentMetadata,
+    ExceptionFilter,
     Guard,
-    InputMetadata,
-    InputPipe,
     Interceptor,
     MaybePromise,
+    Pipe,
     ResponseSerializer,
     RouteHandler,
     RouteMiddleware,
@@ -15,9 +15,9 @@ import type {
 export interface RoutePipelineDefinition<TContext extends AnyRouteContext = AnyRouteContext, TResult = unknown> {
     readonly middleware?: readonly RouteMiddleware<TContext>[]
     readonly guards?: readonly Guard<TContext>[]
-    readonly inputPipes?: readonly InputPipe<unknown, unknown, TContext>[]
+    readonly pipes?: readonly Pipe<unknown, unknown, TContext>[]
     readonly interceptors?: readonly Interceptor<TContext>[]
-    readonly errorMappers?: readonly ErrorMapper<TContext>[]
+    readonly exceptionFilters?: readonly ExceptionFilter<TContext>[]
     readonly responseSerializer?: ResponseSerializer<TResult, TContext>
     readonly handler: RouteHandler<TContext, TResult>
 }
@@ -26,8 +26,8 @@ export type RoutePreparation<TContext extends AnyRouteContext = AnyRouteContext>
 
 /**
  * Adapter-owned context hydration that must complete before middleware runs.
- * This is intentionally separate from route input preparation: hydrating
- * framework metadata such as dynamic params must not consume request input.
+ * Hydrating framework metadata such as dynamic params must not consume the
+ * request body or run user-defined argument pipes.
  */
 export type RouteContextPreparation<TContext extends AnyRouteContext = AnyRouteContext> = RoutePreparation<TContext>
 
@@ -38,16 +38,18 @@ function isResponse(value: unknown): value is Response {
 /**
  * Compiled request pipeline.
  *
- * A pipeline owns its stage order and immutable component lists. Framework
- * adapters should compile one instance while creating a Route Handler and
- * reuse it for every request handled by that route.
+ * The order follows the familiar request-processing mental model while keeping
+ * Next's native Request/Response boundary intact:
+ *
+ * Middleware → Guards → Interceptors (enter) → argument preparation → Pipes
+ * → Handler → Interceptors (exit) → Middleware (exit) → serialization.
  */
 export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, TResult = unknown> {
     readonly middleware: readonly RouteMiddleware<TContext>[]
     readonly guards: readonly Guard<TContext>[]
-    readonly inputPipes: readonly InputPipe<unknown, unknown, TContext>[]
+    readonly pipes: readonly Pipe<unknown, unknown, TContext>[]
     readonly interceptors: readonly Interceptor<TContext>[]
-    readonly errorMappers: readonly ErrorMapper<TContext>[]
+    readonly exceptionFilters: readonly ExceptionFilter<TContext>[]
     readonly responseSerializer: ResponseSerializer<unknown, TContext> | undefined
 
     private readonly handler: RouteHandler<TContext, TResult>
@@ -55,9 +57,9 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
     constructor(definition: RoutePipelineDefinition<TContext, TResult>) {
         this.middleware = Object.freeze([...(definition.middleware ?? [])])
         this.guards = Object.freeze([...(definition.guards ?? [])])
-        this.inputPipes = Object.freeze([...(definition.inputPipes ?? [])])
+        this.pipes = Object.freeze([...(definition.pipes ?? [])])
         this.interceptors = Object.freeze([...(definition.interceptors ?? [])])
-        this.errorMappers = Object.freeze([...(definition.errorMappers ?? [])])
+        this.exceptionFilters = Object.freeze([...(definition.exceptionFilters ?? [])])
         this.responseSerializer = definition.responseSerializer as ResponseSerializer<unknown, TContext> | undefined
         this.handler = definition.handler
     }
@@ -65,11 +67,17 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
     /**
      * Execute the compiled pipeline for one request context.
      *
-     * The context preparation callback hydrates framework metadata before
-     * middleware. The input preparation callback resolves route input after
-     * middleware and guards, but before input pipes and interceptors.
+     * prepareContext hydrates framework metadata before middleware. prepare
+     * resolves only the arguments declared by the adapter after guards and
+     * inside the interceptor boundary.
      */
     async execute(context: TContext, prepare?: RoutePreparation<TContext>, prepareContext?: RouteContextPreparation<TContext>): Promise<Response> {
+        const runHandlerStages = async (): Promise<unknown> => {
+            await prepare?.(context)
+            await this.runPipes(context)
+            return this.handler(context)
+        }
+
         const runProtectedStages = async (): Promise<unknown> => {
             const guardResponse = await this.runGuards(context)
 
@@ -77,10 +85,7 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
                 return guardResponse
             }
 
-            await prepare?.(context)
-            await this.runInputPipes(context)
-
-            return this.runInterceptors(context, async () => this.handler(context))
+            return this.runInterceptors(context, runHandlerStages)
         }
 
         try {
@@ -88,8 +93,8 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
             const result = await this.runMiddleware(context, runProtectedStages)
             return this.serializeResult(result, context)
         } catch (error) {
-            for (const mapper of this.errorMappers) {
-                const response = await mapper.map(error, context)
+            for (const filter of this.exceptionFilters) {
+                const response = await filter.catch(error, context)
 
                 if (response) {
                     return response
@@ -121,7 +126,7 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
 
         let nextCalled = false
 
-        return current.handle(context, async () => {
+        return current.use(context, async () => {
             if (nextCalled) {
                 throw new DuplicateMiddlewareNextError(current.name)
             }
@@ -157,20 +162,40 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
         return undefined
     }
 
-    private async runInputPipes(context: TContext): Promise<void> {
-        let input: unknown = context.input
-        const metadata: InputMetadata = context.inputMetadata ?? { location: 'custom', name: 'route-input' }
+    private async runPipes(context: TContext): Promise<void> {
+        if (!context.argumentMetadata) {
+            return
+        }
 
-        for (const pipe of this.inputPipes) {
-            input = await pipe.transform(input, metadata, context)
-            context.input = input as TContext['input']
+        const fields = context.argumentMetadata?.fields
+
+        if (fields) {
+            for (const [name, metadata] of Object.entries(fields)) {
+                let value = context.args[name]
+
+                for (const pipe of this.pipes) {
+                    value = await pipe.transform(value, metadata, context)
+                }
+
+                context.args = { ...context.args, [name]: value } as TContext['args']
+            }
+
+            return
+        }
+
+        const metadata: ArgumentMetadata = context.argumentMetadata
+        let value: unknown = context.args
+
+        for (const pipe of this.pipes) {
+            value = await pipe.transform(value, metadata, context)
+            context.args = value as TContext['args']
         }
     }
 }
 
 /**
- * Compatibility helper for callers that used the original functional Core
- * API. New adapters should construct and retain a `RoutePipeline` instance.
+ * Functional entry point retained for framework adapters and low-level users.
+ * New adapters should construct and retain a RoutePipeline instance.
  */
 export function executeRoutePipeline<TContext extends AnyRouteContext, TResult>(
     definition: RoutePipelineDefinition<TContext, TResult>,

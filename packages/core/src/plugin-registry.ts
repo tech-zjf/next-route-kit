@@ -1,9 +1,9 @@
 import { DuplicateResponseSerializerError, RuntimeIncompatiblePluginError } from './errors.js'
 import type {
-    ErrorMapper,
+    ExceptionFilter,
     Guard,
-    InputPipe,
     Interceptor,
+    Pipe,
     ResponseSerializer,
     RouteMiddleware,
     RoutePlugin,
@@ -15,9 +15,9 @@ import type {
 export interface RoutePluginContributionSnapshot {
     readonly middleware: readonly RouteMiddleware[]
     readonly guards: readonly Guard[]
-    readonly inputPipes: readonly InputPipe[]
+    readonly pipes: readonly Pipe[]
     readonly interceptors: readonly Interceptor[]
-    readonly errorMappers: readonly ErrorMapper[]
+    readonly exceptionFilters: readonly ExceptionFilter[]
     readonly responseSerializer: ResponseSerializer | undefined
 }
 
@@ -72,9 +72,9 @@ export class RoutePluginRegistry {
         return Object.freeze({
             middleware: this.freeze(this.contributions.flatMap((contribution) => contribution.middleware ?? [])),
             guards: this.freeze(this.contributions.flatMap((contribution) => contribution.guards ?? [])),
-            inputPipes: this.freeze(this.contributions.flatMap((contribution) => contribution.inputPipes ?? [])),
+            pipes: this.freeze(this.contributions.flatMap((contribution) => contribution.pipes ?? [])),
             interceptors: this.freeze(this.contributions.flatMap((contribution) => contribution.interceptors ?? [])),
-            errorMappers: this.freeze(this.contributions.flatMap((contribution) => contribution.errorMappers ?? [])),
+            exceptionFilters: this.freeze(this.contributions.flatMap((contribution) => contribution.exceptionFilters ?? [])),
             responseSerializer: responseSerializers[0],
         })
     }
@@ -103,9 +103,9 @@ export class RoutePluginRegistry {
             ...contribution,
             ...(contribution.middleware ? { middleware: Object.freeze([...contribution.middleware]) } : {}),
             ...(contribution.guards ? { guards: Object.freeze([...contribution.guards]) } : {}),
-            ...(contribution.inputPipes ? { inputPipes: Object.freeze([...contribution.inputPipes]) } : {}),
+            ...(contribution.pipes ? { pipes: Object.freeze([...contribution.pipes]) } : {}),
             ...(contribution.interceptors ? { interceptors: Object.freeze([...contribution.interceptors]) } : {}),
-            ...(contribution.errorMappers ? { errorMappers: Object.freeze([...contribution.errorMappers]) } : {}),
+            ...(contribution.exceptionFilters ? { exceptionFilters: Object.freeze([...contribution.exceptionFilters]) } : {}),
         })
     }
 

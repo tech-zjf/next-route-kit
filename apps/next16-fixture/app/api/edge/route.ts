@@ -3,8 +3,12 @@ import { route } from '@/src/route'
 
 export const runtime = 'edge'
 
+type EdgeQuery = {
+    mode?: string
+}
+
 export const GET = route({
     runtime: 'edge',
-    input: query(),
-    handler: ({ input, meta }) => ({ runtime: meta.runtime, query: input }),
+    query: query<EdgeQuery>(),
+    handler: (_request, { query: values, meta }) => ({ runtime: meta.runtime, query: values }),
 })

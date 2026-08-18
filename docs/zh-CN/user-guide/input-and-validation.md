@@ -1,136 +1,84 @@
-# 输入源与校验
+# 输入与校验
 
 [English](../../en/user-guide/input-and-validation.md) · **简体中文**
 
-输入解析和输入校验是分开的。主包负责从 Web Request 获取数据；Input Pipe 或可选适配包负责判断数据是否符合业务规则。
+解析是可选的。只有类型化、可复用的值能让 Route 更清晰时，才声明解析器。
 
-## 内置输入源
-
-```ts
-import { body, headers, jsonBody, params, query, textBody } from 'next-route-kit'
-```
-
-| 输入源          | 值                                                      | 说明                                |
-| --------------- | ------------------------------------------------------- | ----------------------------------- |
-| `jsonBody<T>()` | `Promise<T>`                                            | 延迟解析 JSON；`body<T>()` 是别名。 |
-| `textBody()`    | `Promise<string>`                                       | 以文本读取 Body。                   |
-| `query()`       | `Readonly<Record<string, string \| readonly string[]>>` | 重复 Query Key 会变成只读数组。     |
-| `params<T>()`   | `T`                                                     | 读取已解析的动态路由参数。          |
-| `headers()`     | `Headers`                                               | 返回 Request Headers 的副本。       |
-
-## 组合输入对象
+## Body
 
 ```ts
-const GET = route({
-    input: {
-        body: jsonBody<{ search: string }>(),
-        query: query(),
-        params: params<{ id: string }>(),
-        headers: headers(),
-        version: 'v1',
-    },
-    handler: ({ input }) => ({
-        id: input.params.id,
-        search: input.body.search,
-        page: input.query.page,
-        version: input.version,
-    }),
+export const POST = route({
+    body: jsonBody<CreateInput>(),
+    handler: async (_request, { body }) => service.create(body),
 })
 ```
 
-Source Map 可以混合 Input Source 和字面量。Route Handler 编译时会对该对象做浅快照，之后再修改声明对象不会悄悄改变已经导出的 Handler。
+文本请求使用 `textBody()`。如果原生读取更清楚，就省略 `body`，在 Handler
+中直接调用 `request.text()` 或 `request.json()`。Body 延迟解析并缓存，
+Guard 会先执行。声明 `body` 后，Handler 应使用命名的 `body` 值，因为底层
+Request 流可能已经被解析器消费。
 
-## 自定义输入源
-
-多个路由需要复用同一来源时，使用 `defineInputSource`：
+## Query
 
 ```ts
-import { defineInputSource } from 'next-route-kit'
-
-const tenantId = defineInputSource('tenant-id', 'headers', ({ request }) => {
-    const value = request.headers.get('x-tenant-id')
-
-    if (!value) {
-        throw new Error('Missing x-tenant-id')
-    }
-
-    return value
-})
-
-const route = createRoute()
+type ListQuery = { search?: string; page?: string }
 
 export const GET = route({
-    input: { tenantId },
-    handler: ({ input }) => ({ tenantId: input.tenantId }),
+    query: query<ListQuery>(),
+    handler: (_request, { query: values }) => service.list(values),
 })
 ```
 
-Resolver 接收：
+重复 Key 会变成只读数组。一次性 Query 可以直接使用
+`new URL(request.url).searchParams`。
+
+## Params 和 Headers
 
 ```ts
-type RouteInputContext = {
-    request: Request
-    params: RouteParams
-    state: TState
-    readBody<T>(): Promise<T>
-    readText(): Promise<string>
-}
-```
-
-`readBody()` 和 `readText()` 共享 Request 的一次性 Body 流。重复调用会复用缓存的文本或 JSON 结果。Guard 可以在调用这两个方法之前拒绝请求。
-
-## Resolver 函数
-
-一次性逻辑可以直接使用 resolver，不必定义命名输入源：
-
-```ts
-const route = createRoute()
-
-export const GET = route({
-    input: async ({ request, params, state }) => ({
-        url: request.url,
+export const GET = route<{ id: string }>({
+    handler: (request, { params }) => ({
         id: params.id,
-        userId: state.userId,
+        authorization: request.headers.get('authorization'),
     }),
-    handler: ({ input }) => input,
 })
 ```
 
-## Zod 适配器
+普通 Route 不需要声明 Params/Headers helper，直接从上面的 named context 和原生
+request 上读取即可。
 
-安装可选适配器：
-
-```bash
-pnpm add @next-route-kit/zod zod
-```
-
-`zodPipe(schema)` 在输入解析后执行，并用 Zod 的解析结果替换当前输入，因此支持 transform 和异步 refinement。
+## 自定义 Source
 
 ```ts
-import { z } from 'zod'
-import { createRoute, jsonBody, query } from 'next-route-kit'
-import { zodErrorMapper, zodPipe } from '@next-route-kit/zod'
-
-const bodySchema = z.object({ name: z.string().min(1) })
-const querySchema = z.object({ page: z.coerce.number().int().positive().default(1) })
-
-const route = createRoute({
-    inputPipes: [zodPipe(z.object({ body: bodySchema, query: querySchema }))],
-    errorMappers: [zodErrorMapper()],
+const tenantBody = defineInputSource('tenant-body', 'body', ({ readBody }) => {
+    return readBody<{ tenantId: string }>()
 })
 
 export const POST = route({
-    input: {
-        body: jsonBody<z.input<typeof bodySchema>>(),
-        query: query(),
-    },
-    handler: ({ input }) => ({
-        name: input.body.name,
-        page: input.query.page,
-    }),
+    body: tenantBody,
+    handler: (_request, { body }) => ({ tenantId: body.tenantId }),
 })
 ```
 
-默认 Mapper 返回 `400`、`VALIDATION_ERROR` 和 `issues` 数组。可以通过 `{ status, code, message, headers, name }` 自定义。
+当这个解析器在多个接口中重复使用，并且放到 `body` 或 `query` 后能让
+Handler 更易读时，再使用它。一次性的 Header 直接从 `request.headers`
+读取即可。
 
-校验失败会进入正常的 Error Mapper 链路。根据需要将 Mapper 注册到 Global Factory、Scope 或单个路由。
+## Pipe
+
+Pipe 按声明的参数分别接收值：
+
+```ts
+const validateBody: Pipe = {
+    name: 'validate-body',
+    transform(value, metadata) {
+        if (metadata.type !== 'body') return value
+        return validate(value)
+    },
+}
+
+const route = createRoute({ pipes: [validateBody] })
+```
+
+Core 不绑定校验库。可选 Zod 适配包提供 `zodPipe()` 和
+`zodExceptionFilter()`；一个作用域同时校验 Body、Query 时使用
+`appliesTo` 区分目标。

@@ -91,23 +91,23 @@ jobs:
 
                   curl --fail --silent "http://127.0.0.1:${{ matrix.port }}/api/node?mode=ci" | grep -F '"runtime":"nodejs"'
                   curl --fail --silent "http://127.0.0.1:${{ matrix.port }}/api/edge?mode=ci" | grep -F '"runtime":"edge"'
-                  curl --fail --silent "http://127.0.0.1:${{ matrix.port }}/api/params/42" | grep -F '"id":"42"'
+                  curl --fail --silent "http://127.0.0.1:${{ matrix.port }}/api/params/sample-id" | grep -F '"id":"sample-id"'
                   curl --fail --silent -X POST "http://127.0.0.1:${{ matrix.port }}/api/echo" \
                       -H 'content-type: application/json' \
                       -H 'x-request-id: ci-echo' \
                       --data '{"message":"ci"}' | grep -F '"echo":"ci"'
-                  curl --fail --silent --show-error -X POST "http://127.0.0.1:${{ matrix.port }}/api/accounts/acct-7/orders?preview=true" \
+                  curl --fail --silent --show-error -X POST "http://127.0.0.1:${{ matrix.port }}/api/tenants/tenant-demo/resources?preview=true" \
                       -H 'authorization: Bearer fixture-token' \
                       -H 'content-type: application/json' \
-                      -H 'x-request-id: ci-order' \
-                      --data '{"sku":"sku-42","quantity":2}' | grep -F '"orderId":"order-fixture-user-sku-42"'
-                  if curl --silent --show-error -X POST "http://127.0.0.1:${{ matrix.port }}/api/accounts/acct-7/orders" \
+                      -H 'x-request-id: ci-resource' \
+                      --data '{"label":"sample","size":2}' | grep -F '"resourceId":"resource-viewer-fixture-sample"'
+                  if curl --silent --show-error -X POST "http://127.0.0.1:${{ matrix.port }}/api/tenants/tenant-demo/resources" \
                       -H 'content-type: application/json' \
                       -H 'x-request-id: ci-anonymous' \
                       --data 'not-json' | grep -F '"code":"UNAUTHORIZED"'; then
-                      echo "Unauthenticated order request was rejected as expected."
+                      echo "Unauthenticated resource request was rejected as expected."
                   else
-                      echo "Unauthenticated order request was not rejected as expected." >&2
+                      echo "Unauthenticated resource request was not rejected as expected." >&2
                       exit 1
                   fi
 

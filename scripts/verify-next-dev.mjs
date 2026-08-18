@@ -20,7 +20,9 @@ const fixtures = [
 
 async function verifyFixture(fixture) {
     const nextCommand = production ? ['start'] : ['dev', '--turbopack']
-    const child = spawn('pnpm', ['--filter', fixture.packageName, 'exec', 'next', ...nextCommand, '-p', String(fixture.port)], {
+    const runLabel = production ? 'production' : 'Turbopack development'
+    const serverLabel = production ? 'production server' : 'development server'
+    const child = spawn('pnpm', ['--filter', fixture.packageName, 'exec', 'next', ...nextCommand, '-H', '127.0.0.1', '-p', String(fixture.port)], {
         cwd: rootDirectory,
         detached: true,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -34,10 +36,10 @@ async function verifyFixture(fixture) {
     child.stderr?.on('data', appendLogs)
 
     try {
-        await waitForRoute(child, `http://127.0.0.1:${fixture.port}/api/node?mode=dev`)
+        await waitForRoute(child, `http://127.0.0.1:${fixture.port}/api/node?mode=dev`, serverLabel)
         await assertJson(`http://127.0.0.1:${fixture.port}/api/node?mode=dev`, { data: { runtime: 'nodejs' } }, { headers: { 'x-request-id': 'dev-node' } })
         await assertJson(`http://127.0.0.1:${fixture.port}/api/edge?mode=dev`, { data: { runtime: 'edge' } }, { headers: { 'x-request-id': 'dev-edge' } })
-        await assertJson(`http://127.0.0.1:${fixture.port}/api/params/42`, { data: { id: '42' } }, { headers: { 'x-request-id': 'dev-params' } })
+        await assertJson(`http://127.0.0.1:${fixture.port}/api/params/sample-id`, { data: { id: 'sample-id' } }, { headers: { 'x-request-id': 'dev-params' } })
         await assertJson(
             `http://127.0.0.1:${fixture.port}/api/echo`,
             { data: { echo: 'dev' } },
@@ -48,7 +50,7 @@ async function verifyFixture(fixture) {
             },
         )
         await assertJson(
-            `http://127.0.0.1:${fixture.port}/api/accounts/acct-7/orders?preview=true`,
+            `http://127.0.0.1:${fixture.port}/api/tenants/tenant-demo/resources?preview=true`,
             { code: 'UNAUTHORIZED', requestId: 'dev-anonymous' },
             {
                 method: 'POST',
@@ -58,13 +60,13 @@ async function verifyFixture(fixture) {
             401,
         )
         await assertJson(
-            `http://127.0.0.1:${fixture.port}/api/accounts/acct-7/orders?preview=true`,
+            `http://127.0.0.1:${fixture.port}/api/tenants/tenant-demo/resources?preview=true`,
             {
                 data: {
-                    orderId: 'order-fixture-user-sku-42',
-                    accountId: 'acct-7',
-                    sku: 'sku-42',
-                    quantity: 2,
+                    resourceId: 'resource-viewer-fixture-sample',
+                    tenantId: 'tenant-demo',
+                    label: 'sample',
+                    size: 2,
                     preview: 'true',
                 },
             },
@@ -73,23 +75,23 @@ async function verifyFixture(fixture) {
                 headers: {
                     authorization: 'Bearer fixture-token',
                     'content-type': 'application/json',
-                    'x-request-id': 'dev-order',
+                    'x-request-id': 'dev-resource',
                 },
-                body: JSON.stringify({ sku: 'sku-42', quantity: 2 }),
+                body: JSON.stringify({ label: 'sample', size: 2 }),
             },
         )
-        console.log(`${fixture.name} ${production ? 'production' : 'Turbopack development'} smoke test passed.`)
+        console.log(`${fixture.name} ${runLabel} smoke test passed.`)
     } catch (error) {
-        throw new Error(`${fixture.name} Turbopack development smoke test failed.\n${logs}`, { cause: error })
+        throw new Error(`${fixture.name} ${runLabel} smoke test failed.\n${logs}`, { cause: error })
     } finally {
         await stop(child)
     }
 }
 
-async function waitForRoute(child, url) {
+async function waitForRoute(child, url, serverLabel) {
     for (let attempt = 0; attempt < 60; attempt += 1) {
         if (child.exitCode !== null) {
-            throw new Error(`development server exited with code ${child.exitCode}`)
+            throw new Error(`${serverLabel} exited with code ${child.exitCode}`)
         }
 
         try {
@@ -104,7 +106,7 @@ async function waitForRoute(child, url) {
         await delay(500)
     }
 
-    throw new Error(`timed out waiting for ${url}`)
+    throw new Error(`timed out waiting for ${url} while waiting for the ${serverLabel}`)
 }
 
 async function assertJson(url, expected, init, expectedStatus = 200) {

@@ -1,23 +1,23 @@
 import type {
-    ErrorMapper,
+    ExceptionFilter,
     Guard,
-    InputPipe,
     Interceptor,
     MaybePromise,
+    Pipe,
     ResponseSerializer,
     RouteConfig,
     RouteContext,
-    RouteHandler,
+    RouteMeta,
     RouteMiddleware,
     RouteParams,
     RoutePlugin,
     RouteRuntime,
 } from '@next-route-kit/core'
-import type { ResolvedRouteInput, RouteInputDefinition } from './input.js'
+import type { RouteInputDefinition } from './input.js'
 
-export type DefaultRouteState = Record<string, never>
+export type DefaultRouteLocals = Record<string, never>
 
-export type AnyRouteContext<TState> = RouteContext<any, any, TState>
+export type AnyRouteContext<TLocals = DefaultRouteLocals> = RouteContext<any, Record<string, unknown>, TLocals>
 
 export interface NextRouteHandlerContext<TParams extends RouteParams = RouteParams> {
     readonly params: Promise<TParams>
@@ -25,57 +25,82 @@ export interface NextRouteHandlerContext<TParams extends RouteParams = RoutePara
 
 export interface NextRouteHandler<TParams extends RouteParams = RouteParams> {
     (request: Request): MaybePromise<Response>
-    (request: Request, context: { readonly params: TParams }): MaybePromise<Response>
     (request: Request, context: NextRouteHandlerContext<TParams>): MaybePromise<Response>
 }
 
-export interface RouteInputContext<TParams extends RouteParams = RouteParams, TState = DefaultRouteState> {
+interface BaseRouteHandlerContext<TParams extends RouteParams, TLocals> {
+    readonly params: TParams
+    readonly locals: TLocals
+    readonly meta: RouteMeta
+}
+
+type OptionalRouteValue<TValue, TKey extends string> = [TValue] extends [never] ? {} : { readonly [Key in TKey]: TValue }
+
+export type RouteHandlerContext<
+    TParams extends RouteParams = RouteParams,
+    TBody = never,
+    TQuery = never,
+    TLocals = DefaultRouteLocals,
+> = BaseRouteHandlerContext<TParams, TLocals> & OptionalRouteValue<TBody, 'body'> & OptionalRouteValue<TQuery, 'query'>
+
+export type RouteHandler<TParams extends RouteParams = RouteParams, TBody = never, TQuery = never, TLocals = DefaultRouteLocals, TResult = unknown> = (
+    request: Request,
+    context: RouteHandlerContext<TParams, TBody, TQuery, TLocals>,
+) => MaybePromise<TResult>
+
+export interface RouteInputContext<TParams extends RouteParams = RouteParams, TLocals = DefaultRouteLocals> {
     readonly request: Request
     readonly params: TParams
-    readonly state: TState
+    readonly locals: TLocals
     /** Lazily parses JSON and reuses the same parsed value on later calls. */
     readonly readBody: <T = unknown>() => Promise<T>
     /** Lazily reads text while sharing the underlying one-shot Request stream. */
     readonly readText: () => Promise<string>
 }
 
-export type RouteInputResolver<TParams extends RouteParams = RouteParams, TInput = unknown, TState = DefaultRouteState> = (
-    context: RouteInputContext<TParams, TState>,
-) => MaybePromise<TInput>
+export type RouteInputResolver<TParams extends RouteParams = RouteParams, TValue = unknown, TLocals = DefaultRouteLocals> = (
+    context: RouteInputContext<TParams, TLocals>,
+) => MaybePromise<TValue>
 
-export interface RouteFactoryConfig<TState = DefaultRouteState> extends RouteConfig<AnyRouteContext<TState>, unknown> {
+export interface RouteFactoryConfig<TLocals = DefaultRouteLocals> extends RouteConfig<AnyRouteContext<TLocals>, unknown> {
     /** Runtime target used for static plugin compatibility diagnostics. */
     readonly runtime?: RouteRuntime
     /** User-facing alias for responseSerializer. */
-    readonly response?: ResponseSerializer<unknown, AnyRouteContext<TState>>
+    readonly response?: ResponseSerializer<unknown, AnyRouteContext<TLocals>>
 }
 
-export interface RouteOptions<TParams extends RouteParams = RouteParams, TInput = unknown, TState = DefaultRouteState, TResult = unknown> extends RouteConfig<
-    AnyRouteContext<TState>,
-    TResult
-> {
+export interface RouteOptions<
+    TParams extends RouteParams = RouteParams,
+    TBody = never,
+    TQuery = never,
+    TLocals = DefaultRouteLocals,
+    TResult = unknown,
+> extends RouteConfig<AnyRouteContext<TLocals>, TResult> {
     /** Route-level runtime target used for static plugin compatibility diagnostics. */
     readonly runtime?: RouteRuntime
-    readonly input?: RouteInputDefinition<TInput, TParams, TState>
+    /** Optional automatic body parsing. Omit it to keep the native Request body API. */
+    readonly body?: RouteInputDefinition<TBody, TParams, TLocals>
+    /** Optional query parsing. Omit it to read request.url directly. */
+    readonly query?: RouteInputDefinition<TQuery, TParams, TLocals>
     /** User-facing alias for a route-local responseSerializer. */
-    readonly response?: ResponseSerializer<unknown, AnyRouteContext<TState>>
+    readonly response?: ResponseSerializer<unknown, AnyRouteContext<TLocals>>
     /** Route-local plugins; use is kept as the concise route-level spelling. */
     readonly use?: readonly RoutePlugin[]
-    readonly handler: RouteHandler<RouteContext<TParams, ResolvedRouteInput<TInput>, TState>, TResult>
+    readonly handler: RouteHandler<TParams, TBody, TQuery, TLocals, TResult>
 }
 
-export interface RouteFactory<TState = DefaultRouteState> {
-    readonly config: Readonly<RouteFactoryConfig<TState>>
+export interface RouteFactory<TLocals = DefaultRouteLocals> {
+    readonly config: Readonly<RouteFactoryConfig<TLocals>>
 
-    <TParams extends RouteParams = RouteParams, TInput = unknown, TResult = unknown>(
-        options: RouteOptions<TParams, TInput, TState, TResult>,
+    <TParams extends RouteParams = RouteParams, TBody = never, TQuery = never, TResult = unknown>(
+        options: RouteOptions<TParams, TBody, TQuery, TLocals, TResult>,
     ): NextRouteHandler<TParams>
 
-    extend(config: RouteFactoryConfig<TState>): RouteFactory<TState>
+    extend(config: RouteFactoryConfig<TLocals>): RouteFactory<TLocals>
 }
 
 export interface RootRouteFactory {
-    <TState = DefaultRouteState>(config?: RouteFactoryConfig<TState>): RouteFactory<TState>
+    <TLocals = DefaultRouteLocals>(config?: RouteFactoryConfig<TLocals>): RouteFactory<TLocals>
 }
 
 export interface JsonResponseOptions<TContext extends RouteContext<any, any, any> = RouteContext<any, any, any>> {
@@ -84,11 +109,11 @@ export interface JsonResponseOptions<TContext extends RouteContext<any, any, any
     readonly transform?: (value: unknown, context: TContext) => MaybePromise<unknown>
 }
 
-export type PublicRouteConfig<TState = DefaultRouteState> = RouteFactoryConfig<TState>
+export type PublicRouteConfig<TLocals = DefaultRouteLocals> = RouteFactoryConfig<TLocals>
 
-export type PublicRouteComponent<TState = DefaultRouteState> =
-    | RouteMiddleware<AnyRouteContext<TState>>
-    | Guard<AnyRouteContext<TState>>
-    | InputPipe<unknown, unknown, AnyRouteContext<TState>>
-    | Interceptor<AnyRouteContext<TState>>
-    | ErrorMapper<AnyRouteContext<TState>>
+export type PublicRouteComponent<TLocals = DefaultRouteLocals> =
+    | RouteMiddleware<AnyRouteContext<TLocals>>
+    | Guard<AnyRouteContext<TLocals>>
+    | Pipe<unknown, unknown, AnyRouteContext<TLocals>>
+    | Interceptor<AnyRouteContext<TLocals>>
+    | ExceptionFilter<AnyRouteContext<TLocals>>

@@ -13,18 +13,27 @@ export interface RouteMeta {
     readonly [key: string]: unknown
 }
 
-export interface InputMetadata {
-    readonly location: 'body' | 'query' | 'params' | 'headers' | 'custom'
+/** Metadata supplied to a Pipe for the value it is transforming. */
+export interface ArgumentMetadata {
+    readonly type: 'body' | 'query' | 'params' | 'headers' | 'custom'
     readonly name?: string
-    readonly fields?: Readonly<Record<string, InputMetadata>>
+    readonly data?: string
+    readonly fields?: Readonly<Record<string, ArgumentMetadata>>
 }
 
-export interface RouteContext<TParams extends RouteParams = RouteParams, TInput = unknown, TState = Record<string, never>> {
+/**
+ * Framework-neutral request context used by the compiled pipeline.
+ *
+ * args is the adapter-owned resolved argument store. Route handlers in the
+ * Next adapter receive these values as named context properties instead of
+ * reading args directly.
+ */
+export interface RouteContext<TParams extends RouteParams = RouteParams, TArgs = Readonly<Record<string, unknown>>, TLocals = Record<string, never>> {
     request: Request
     params: TParams
-    input: TInput
-    inputMetadata?: InputMetadata
-    state: TState
+    args: TArgs
+    argumentMetadata?: ArgumentMetadata
+    locals: TLocals
     meta: RouteMeta
 }
 
@@ -34,9 +43,9 @@ export interface RouteConfig<TContext extends AnyRouteContext = AnyRouteContext,
     readonly plugins?: readonly RoutePlugin[]
     readonly middleware?: readonly RouteMiddleware<TContext>[]
     readonly guards?: readonly Guard<TContext>[]
-    readonly inputPipes?: readonly InputPipe<unknown, unknown, TContext>[]
+    readonly pipes?: readonly Pipe<unknown, unknown, TContext>[]
     readonly interceptors?: readonly Interceptor<TContext>[]
-    readonly errorMappers?: readonly ErrorMapper<TContext>[]
+    readonly exceptionFilters?: readonly ExceptionFilter<TContext>[]
     readonly responseSerializer?: ResponseSerializer<TResult, TContext>
 }
 
@@ -49,7 +58,7 @@ export interface RouteOptions<TContext extends AnyRouteContext = AnyRouteContext
 export interface RouteMiddleware<TContext extends AnyRouteContext = AnyRouteContext> {
     readonly name: string
 
-    handle(context: TContext, next: () => Promise<unknown>): MaybePromise<unknown>
+    use(context: TContext, next: () => Promise<unknown>): MaybePromise<unknown>
 }
 
 export interface Guard<TContext extends AnyRouteContext = AnyRouteContext> {
@@ -58,22 +67,22 @@ export interface Guard<TContext extends AnyRouteContext = AnyRouteContext> {
     canActivate(context: TContext): MaybePromise<boolean | Response>
 }
 
-export interface InputPipe<TInput = unknown, TOutput = TInput, TContext extends AnyRouteContext = AnyRouteContext> {
+export interface Pipe<TInput = unknown, TOutput = TInput, TContext extends AnyRouteContext = AnyRouteContext> {
     readonly name: string
 
-    transform(value: TInput, metadata: InputMetadata, context: TContext): MaybePromise<TOutput>
+    transform(value: TInput, metadata: ArgumentMetadata, context: TContext): MaybePromise<TOutput>
 }
 
 export interface Interceptor<TContext extends AnyRouteContext = AnyRouteContext> {
     readonly name: string
 
-    intercept(context: TContext, next: () => Promise<unknown>): Promise<unknown>
+    intercept(context: TContext, next: () => Promise<unknown>): MaybePromise<unknown>
 }
 
-export interface ErrorMapper<TContext extends AnyRouteContext = AnyRouteContext> {
+export interface ExceptionFilter<TContext extends AnyRouteContext = AnyRouteContext> {
     readonly name: string
 
-    map(error: unknown, context: TContext): MaybePromise<Response | undefined>
+    catch(error: unknown, context: TContext): MaybePromise<Response | undefined>
 }
 
 export interface ResponseSerializer<TValue = unknown, TContext extends AnyRouteContext = AnyRouteContext> {
@@ -85,9 +94,9 @@ export interface ResponseSerializer<TValue = unknown, TContext extends AnyRouteC
 export interface RoutePluginContribution {
     readonly middleware?: readonly RouteMiddleware[]
     readonly guards?: readonly Guard[]
-    readonly inputPipes?: readonly InputPipe[]
+    readonly pipes?: readonly Pipe[]
     readonly interceptors?: readonly Interceptor[]
-    readonly errorMappers?: readonly ErrorMapper[]
+    readonly exceptionFilters?: readonly ExceptionFilter[]
     readonly responseSerializer?: ResponseSerializer
 }
 

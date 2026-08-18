@@ -1,34 +1,19 @@
 # Getting started
 
-[简体中文](../../zh-CN/user-guide/getting-started.md) · **English**
+**English** · [简体中文](../../zh-CN/user-guide/getting-started.md)
 
-This guide uses the native Next.js App Router structure. No route file is
-renamed and no registration is added to `next.config.ts`.
-
-If you want to see the concrete problem this pipeline solves before starting,
-read [Why use next-route-kit?](./why-route-kit.md).
-
-## 1. Install the package
+## Install
 
 ```bash
-pnpm add next-route-kit
+npm install next-route-kit
 ```
 
-The application must already use the Next.js App Router and Route Handler
-convention. The Next.js version and Node.js version should follow the
-requirements of the Next.js version selected by the application.
+The package targets Next.js App Router Route Handlers and Node.js `>=18.18.0`.
 
-The published packages are ESM packages, so use `import`/`export`. The package
-baseline is Node.js `>=18.18.0`; a newer Next.js version may impose a newer Node
-requirement of its own.
-
-## 2. Create a shared Factory
-
-Keep the Factory in an application-owned server module. The file name and
-directory are conventions; `next-route-kit` does not scan them.
+## Create a base Factory
 
 ```ts
-// src/server/routes/index.ts
+// src/server/routes.ts
 import { createRoute, jsonResponse } from 'next-route-kit'
 
 export const route = createRoute({
@@ -36,135 +21,84 @@ export const route = createRoute({
 })
 ```
 
-The Factory is immutable and callable. Calling `route(options)` compiles one
-Route Handler. Calling `route.extend(config)` creates another immutable Factory
-for a business scope.
+Import this application-owned module from Route Handlers. No
+`next.config.ts` registration is needed.
 
-## 3. Export a normal Route Handler
+## Write a detail route
 
 ```ts
-// app/api/users/route.ts
-import { jsonBody } from 'next-route-kit'
+// app/api/articles/[id]/route.ts
 import { route } from '@/src/server/routes'
 
-type CreateUserInput = {
-    name: string
-}
+type ArticleParams = { id: string }
 
-export const POST = route({
-    input: jsonBody<CreateUserInput>(),
-    handler: async ({ input }) => ({
-        name: input.name,
-    }),
-})
-```
-
-The handler returns an object, so the default JSON serializer produces a JSON
-response. It may also return a native `Response` when it needs full control:
-
-```ts
-export const DELETE = route({
-    handler: () => new Response(null, { status: 204 }),
-})
-```
-
-## 4. Read query, params, and headers
-
-Input sources can be composed into a typed `input` object:
-
-```ts
-// app/api/users/[id]/route.ts
-import { headers, params, query } from 'next-route-kit'
-import { route } from '@/src/server/routes'
-
-type UserParams = { id: string }
-
-export const GET = route({
-    input: {
-        params: params<UserParams>(),
-        query: query(),
-        headers: headers(),
+export const GET = route<ArticleParams>({
+    handler: async (request, { params }) => {
+        const article = await articleService.find(params.id)
+        return article ?? new Response(null, { status: 404 })
     },
-    handler: ({ input }) => ({
-        id: input.params.id,
-        preview: input.query.preview,
-        authorization: input.headers.get('authorization'),
-    }),
 })
 ```
 
-Dynamic route params are hydrated by the adapter before Middleware and Guards
-run. In the handler and input source, `params` is the resolved object; the
-Next.js Route Handler's second argument remains Promise-based internally.
+The first argument is the native `Request`. Next dynamic params are hydrated
+before middleware and exposed as `context.params`.
 
-## 5. Add a business scope
-
-Put shared policy in a scope Factory instead of repeating it in every route:
+## Add an authenticated scope
 
 ```ts
-// src/server/routes/scopes.ts
-import { route } from './index'
-import { requireUser } from '../security/require-user'
+import { unauthorized } from 'next-route-kit'
 
-export const authenticatedRoute = route.extend({
-    guards: [requireUser],
+const authenticatedRoute = route.extend({
+    guards: [
+        {
+            name: 'authentication',
+            canActivate(context) {
+                if (context.request.headers.get('authorization') !== 'Bearer sample-token') {
+                    throw unauthorized()
+                }
+
+                context.locals.userId = 'viewer-demo'
+                return true
+            },
+        },
+    ],
 })
 ```
+
+Define request-local values with the Factory generic:
 
 ```ts
-// app/api/account/route.ts
-import { authenticatedRoute } from '@/src/server/routes/scopes'
-
-export const GET = authenticatedRoute({
-    handler: ({ state }) => ({ userId: state.userId }),
-})
+type ApiLocals = { userId?: string; requestId: string }
+const apiRoute = createRoute<ApiLocals>({ middleware: [requestContext] })
 ```
 
-See [configuration and scopes](./configuration.md) for merge order and the
-security policy around inherited components.
-
-## 6. Add validation when needed
-
-Validation is optional. The Core and main package do not force a validation
-library:
-
-```bash
-pnpm add @next-route-kit/zod zod
-```
+## Add body or query only when needed
 
 ```ts
-import { z } from 'zod'
-import { createRoute, jsonBody } from 'next-route-kit'
-import { zodErrorMapper, zodPipe } from '@next-route-kit/zod'
+import { jsonBody, query } from 'next-route-kit'
 
-const bodySchema = z.object({ name: z.string().min(1) })
+type CreateArticle = { title: string }
+type CreateQuery = { publish?: string }
 
-const route = createRoute({
-    inputPipes: [zodPipe(z.object({ body: bodySchema }))],
-    errorMappers: [zodErrorMapper()],
-})
-
-export const POST = route({
-    input: { body: jsonBody<z.input<typeof bodySchema>>() },
-    handler: ({ input }) => ({ name: input.body.name }),
+export const POST = authenticatedRoute({
+    body: jsonBody<CreateArticle>(),
+    query: query<CreateQuery>(),
+    handler: async (_request, { body, query: values, locals }) =>
+        articleService.create({
+            userId: locals.userId,
+            title: body.title,
+            publish: values.publish === 'true',
+        }),
 })
 ```
 
-## Request lifecycle
+A list route can use `new URL(request.url)` directly. Params are in the
+context and headers are on `request.headers`; neither needs an empty helper
+declaration.
 
-The public order is fixed:
+## Return values
 
-```text
-Next params hydration
-  → Middleware
-  → Guard
-  → Input Resolver
-  → Input Pipe
-  → Interceptor
-  → Handler
-  → Response Serializer
-```
+Plain values use the default JSON serializer. Return a native `Response` for a
+stream, file, redirect, explicit status, or `204` response.
 
-Guards can reject a request before a route body is read. Input Pipes transform
-the resolved input before the handler. Error Mappers handle failures from the
-entire pipeline.
+Continue with the [API reference](api-reference.md).

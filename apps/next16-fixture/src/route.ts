@@ -4,26 +4,26 @@ import {
     jsonResponse,
     unauthorized,
     type AnyRouteContext,
-    type ErrorMapper,
+    type ExceptionFilter,
     type Guard,
-    type InputPipe,
     type Interceptor,
+    type Pipe,
     type RouteMiddleware,
 } from 'next-route-kit'
 
-export type FixtureState = {
+export type FixtureLocals = {
     requestId: string
     startedAt: number
     userId?: string
 }
 
-type FixtureContext = AnyRouteContext<FixtureState>
+type FixtureContext = AnyRouteContext<FixtureLocals>
 
 const requestIdMiddleware: RouteMiddleware<FixtureContext> = {
     name: 'request-id',
-    handle(context, next) {
-        context.state.requestId = context.request.headers.get('x-request-id') ?? 'fixture-generated-request'
-        context.state.startedAt = Date.now()
+    use(context, next) {
+        context.locals.requestId = context.request.headers.get('x-request-id') ?? 'fixture-generated-request'
+        context.locals.startedAt = Date.now()
         return next()
     },
 }
@@ -33,20 +33,24 @@ const responseEnvelopeInterceptor: Interceptor<FixtureContext> = {
     async intercept(context, next) {
         const value = await next()
 
+        if (value instanceof Response) {
+            return value
+        }
+
         return {
             data: value,
             meta: {
-                requestId: context.state.requestId,
-                ...(context.state.userId === undefined ? {} : { userId: context.state.userId }),
-                durationMs: Date.now() - context.state.startedAt,
+                requestId: context.locals.requestId,
+                ...(context.locals.userId === undefined ? {} : { userId: context.locals.userId }),
+                durationMs: Date.now() - context.locals.startedAt,
             },
         }
     },
 }
 
-const requestErrorMapper: ErrorMapper<FixtureContext> = {
-    name: 'request-error',
-    map(error, context) {
+const requestExceptionFilter: ExceptionFilter<FixtureContext> = {
+    name: 'request-exception-filter',
+    catch(error, context) {
         if (!(error instanceof HttpError)) {
             return undefined
         }
@@ -56,7 +60,7 @@ const requestErrorMapper: ErrorMapper<FixtureContext> = {
                 code: error.code,
                 message: error.message,
                 ...(error.details === undefined ? {} : { details: error.details }),
-                requestId: context.state.requestId,
+                requestId: context.locals.requestId,
             },
             {
                 status: error.status,
@@ -73,23 +77,26 @@ const authenticationGuard: Guard<FixtureContext> = {
             throw unauthorized()
         }
 
-        context.state.userId = 'fixture-user'
+        context.locals.userId = 'viewer-fixture'
         return true
     },
 }
 
-const orderValidationPipe: InputPipe<unknown, unknown, FixtureContext> = {
-    name: 'order-validation',
-    transform(value) {
-        const input = value as { body?: { sku?: unknown; quantity?: unknown } }
-        const body = input.body
+const resourceValidationPipe: Pipe<unknown, unknown, FixtureContext> = {
+    name: 'resource-validation',
+    transform(value, metadata) {
+        if (metadata.type !== 'body') {
+            return value
+        }
 
-        if (typeof body?.sku !== 'string' || body.sku.length === 0 || typeof body.quantity !== 'number' || body.quantity <= 0) {
+        const body = value as { label?: unknown; size?: unknown }
+
+        if (typeof body.label !== 'string' || body.label.length === 0 || typeof body.size !== 'number' || body.size <= 0) {
             throw new HttpError({
                 status: 422,
-                code: 'INVALID_ORDER',
-                message: 'sku and quantity must be valid',
-                details: { fields: ['body.sku', 'body.quantity'] },
+                code: 'INVALID_RESOURCE',
+                message: 'label and size must be valid',
+                details: { fields: ['body.label', 'body.size'] },
             })
         }
 
@@ -97,10 +104,10 @@ const orderValidationPipe: InputPipe<unknown, unknown, FixtureContext> = {
     },
 }
 
-export const route = createRoute<FixtureState>({
+export const route = createRoute<FixtureLocals>({
     middleware: [requestIdMiddleware],
     interceptors: [responseEnvelopeInterceptor],
-    errorMappers: [requestErrorMapper],
+    exceptionFilters: [requestExceptionFilter],
     response: jsonResponse({
         headers: { 'x-route-kit': 'fixture' },
     }),
@@ -110,6 +117,6 @@ export const authenticatedRoute = route.extend({
     guards: [authenticationGuard],
 })
 
-export const orderRoute = authenticatedRoute.extend({
-    inputPipes: [orderValidationPipe],
+export const resourceRoute = authenticatedRoute.extend({
+    pipes: [resourceValidationPipe],
 })

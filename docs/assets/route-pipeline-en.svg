@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1900 900" role="img" aria-labelledby="title description">
+    <title id="title">next-route-kit request pipeline</title>
+    <desc id="description">A hand-drawn style flow from a Next.js request through params hydration, middleware, guard, declared argument resolution, pipe, interceptor, handler, and response serialization, with a separate exception filter path.</desc>
+    <defs>
+        <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+            <path d="M 1 1 L 10 6 L 1 11" fill="none" stroke="#171717" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+        </marker>
+        <marker id="orange-arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+            <path d="M 1 1 L 10 6 L 1 11" fill="none" stroke="#e46d2f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+        </marker>
+    </defs>
+
+    <rect width="1900" height="900" fill="#fffdf8" />
+
+    <text x="950" y="74" text-anchor="middle" font-family="Comic Sans MS, Chalkboard SE, KaiTi, sans-serif" font-size="42" font-weight="700" fill="#171717">next-route-kit · one pipeline, clean Route Handlers</text>
+    <text x="950" y="116" text-anchor="middle" font-family="Comic Sans MS, Chalkboard SE, KaiTi, sans-serif" font-size="22" fill="#e46d2f">Global Factory → Scope Factory → Route Handler</text>
+
+    <g fill="#fffdf8" stroke="#171717" stroke-width="4" stroke-linejoin="round">
+        <path d="M 80 178 Q 82 167 96 168 L 352 168 Q 366 169 365 182 L 365 282 Q 364 295 350 294 L 96 294 Q 81 293 82 280 Z" />
+        <path d="M 420 178 Q 422 167 436 168 L 686 168 Q 701 169 700 182 L 700 282 Q 699 295 685 294 L 436 294 Q 421 293 422 280 Z" />
+        <path d="M 755 178 Q 757 167 771 168 L 1019 168 Q 1034 169 1033 182 L 1033 282 Q 1032 295 1018 294 L 771 294 Q 756 293 757 280 Z" />
+        <path d="M 1088 178 Q 1090 167 1104 168 L 1354 168 Q 1369 169 1368 182 L 1368 282 Q 1367 295 1353 294 L 1104 294 Q 1089 293 1090 280 Z" />
+        <path d="M 1422 178 Q 1424 167 1438 168 L 1810 168 Q 1825 169 1824 182 L 1824 282 Q 1823 295 1809 294 L 1438 294 Q 1423 293 1424 280 Z" />
+    </g>
+
+    <g font-family="Comic Sans MS, Chalkboard SE, KaiTi, sans-serif" fill="#171717" text-anchor="middle">
+        <text x="222" y="215" font-size="28" font-weight="700">Global Factory</text>
+        <text x="222" y="252" font-size="20">request ID · logging · response</text>
+        <text x="222" y="277" font-size="20">shared once for many routes</text>
+        <text x="560" y="215" font-size="28" font-weight="700">Scope Factory</text>
+        <text x="560" y="252" font-size="20">auth · admin · domain policy</text>
+        <text x="560" y="277" font-size="20">route.extend({ ... })</text>
+        <text x="894" y="215" font-size="28" font-weight="700">Route Handler</text>
+        <text x="894" y="252" font-size="20">native app/**/route.ts</text>
+        <text x="894" y="277" font-size="20">GET / POST / PATCH ...</text>
+        <text x="1228" y="215" font-size="28" font-weight="700">Business input</text>
+        <text x="1228" y="252" font-size="20">body · query · params · headers</text>
+        <text x="1228" y="277" font-size="20">typed input declaration</text>
+        <text x="1623" y="215" font-size="28" font-weight="700">Business result</text>
+        <text x="1623" y="252" font-size="20">handler stays small</text>
+        <text x="1623" y="277" font-size="20">policy stays reusable</text>
+    </g>
+
+    <path d="M 365 231 C 383 224 401 239 422 231" fill="none" stroke="#e46d2f" stroke-width="3" stroke-dasharray="10 10" marker-end="url(#orange-arrow)" />
+    <path d="M 700 231 C 718 224 736 239 757 231" fill="none" stroke="#e46d2f" stroke-width="3" stroke-dasharray="10 10" marker-end="url(#orange-arrow)" />
+    <path d="M 1033 231 C 1051 224 1069 239 1090 231" fill="none" stroke="#e46d2f" stroke-width="3" stroke-dasharray="10 10" marker-end="url(#orange-arrow)" />
+    <path d="M 1368 231 C 1386 224 1404 239 1424 231" fill="none" stroke="#e46d2f" stroke-width="3" stroke-dasharray="10 10" marker-end="url(#orange-arrow)" />
+
+    <text x="950" y="356" text-anchor="middle" font-family="Comic Sans MS, Chalkboard SE, KaiTi, sans-serif" font-size="25" font-weight="700" fill="#171717">Runtime request lifecycle</text>
+
+    <g fill="#fffdf8" stroke="#171717" stroke-width="4" stroke-linejoin="round">
+        <path d="M 55 408 Q 57 397 70 398 L 215 398 Q 228 399 227 412 L 227 524 Q 226 537 213 536 L 70 536 Q 56 535 57 522 Z" />
+        <path d="M 252 408 Q 254 397 267 398 L 412 398 Q 425 399 424 412 L 424 524 Q 423 537 410 536 L 267 536 Q 253 535 254 522 Z" />
+        <path d="M 449 408 Q 451 397 464 398 L 609 398 Q 622 399 621 412 L 621 524 Q 620 537 607 536 L 464 536 Q 450 535 451 522 Z" />
+        <path d="M 646 408 Q 648 397 661 398 L 806 398 Q 819 399 818 412 L 818 524 Q 817 537 804 536 L 661 536 Q 647 535 648 522 Z" />
+        <path d="M 843 408 Q 845 397 858 398 L 1003 398 Q 1016 399 1015 412 L 1015 524 Q 1014 537 1001 536 L 858 536 Q 844 535 846 522 Z" />
+        <path d="M 1040 408 Q 1042 397 1055 398 L 1200 398 Q 1213 399 1212 412 L 1212 524 Q 1211 537 1198 536 L 1055 536 Q 1041 535 1042 522 Z" />
+        <path d="M 1237 408 Q 1239 397 1252 398 L 1397 398 Q 1410 399 1409 412 L 1409 524 Q 1408 537 1395 536 L 1252 536 Q 1238 535 1240 522 Z" />
+        <path d="M 1434 408 Q 1436 397 1449 398 L 1594 398 Q 1607 399 1606 412 L 1606 524 Q 1605 537 1592 536 L 1449 536 Q 1435 535 1436 522 Z" />
+        <path d="M 1631 408 Q 1633 397 1646 398 L 1830 398 Q 1843 399 1842 412 L 1842 524 Q 1841 537 1828 536 L 1646 536 Q 1632 535 1633 522 Z" />
+    </g>
+
+    <g fill="none" stroke="#171717" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)">
+        <path d="M 229 468 C 237 460 243 476 252 468" />
+        <path d="M 426 468 C 434 460 440 476 449 468" />
+        <path d="M 623 468 C 631 460 637 476 646 468" />
+        <path d="M 820 468 C 828 460 834 476 843 468" />
+        <path d="M 1017 468 C 1025 460 1031 476 1040 468" />
+        <path d="M 1214 468 C 1222 460 1228 476 1237 468" />
+        <path d="M 1411 468 C 1419 460 1425 476 1434 468" />
+        <path d="M 1608 468 C 1616 460 1622 476 1631 468" />
+    </g>
+
+    <g font-family="Comic Sans MS, Chalkboard SE, KaiTi, sans-serif" fill="#171717" text-anchor="middle">
+        <text x="141" y="446" font-size="24" font-weight="700">Request</text>
+        <text x="141" y="480" font-size="19">client call</text>
+        <text x="338" y="438" font-size="23" font-weight="700">Next params</text>
+        <text x="338" y="469" font-size="23" font-weight="700">hydration</text>
+        <text x="338" y="503" font-size="18">async params ready</text>
+        <text x="535" y="446" font-size="23" font-weight="700">Middleware</text>
+        <text x="535" y="480" font-size="18">preprocess · locals</text>
+        <text x="732" y="446" font-size="24" font-weight="700">Guard</text>
+        <text x="732" y="480" font-size="18">auth · permission</text>
+        <text x="929" y="438" font-size="21" font-weight="700">Argument</text>
+        <text x="929" y="469" font-size="21" font-weight="700">Resolver</text>
+        <text x="929" y="503" font-size="18">read sources</text>
+        <text x="1126" y="438" font-size="21" font-weight="700">Pipe</text>
+        <text x="1126" y="469" font-size="18">transform</text>
+        <text x="1126" y="503" font-size="18">validate · transform</text>
+        <text x="1323" y="446" font-size="23" font-weight="700">Interceptor</text>
+        <text x="1323" y="480" font-size="18">wrap · time · trace</text>
+        <text x="1520" y="446" font-size="24" font-weight="700">Handler</text>
+        <text x="1520" y="480" font-size="18">business logic</text>
+        <text x="1737" y="438" font-size="21" font-weight="700">Response</text>
+        <text x="1737" y="469" font-size="21" font-weight="700">Serializer</text>
+        <text x="1737" y="503" font-size="18">JSON / Response</text>
+    </g>
+
+    <path d="M 535 552 C 760 610 1000 610 1323 552" fill="none" stroke="#e46d2f" stroke-width="3" stroke-dasharray="11 10" />
+    <path d="M 1323 552 C 1390 620 1505 620 1520 552" fill="none" stroke="#e46d2f" stroke-width="3" stroke-dasharray="11 10" />
+    <path d="M 1520 552 C 1580 640 1680 640 1737 552" fill="none" stroke="#e46d2f" stroke-width="3" stroke-dasharray="11 10" />
+    <text x="1000" y="636" text-anchor="middle" font-family="Comic Sans MS, Chalkboard SE, KaiTi, sans-serif" font-size="22" fill="#e46d2f">if any stage throws</text>
+
+    <g fill="#fff7ef" stroke="#e46d2f" stroke-width="4" stroke-linejoin="round">
+        <path d="M 1060 702 Q 1062 691 1075 692 L 1270 692 Q 1283 693 1282 706 L 1282 808 Q 1281 821 1268 820 L 1075 820 Q 1061 819 1062 806 Z" />
+        <path d="M 1350 702 Q 1352 691 1365 692 L 1570 692 Q 1583 693 1582 706 L 1582 808 Q 1581 821 1568 820 L 1365 820 Q 1351 819 1352 806 Z" />
+    </g>
+    <path d="M 1120 670 C 1110 650 1125 643 1135 630" fill="none" stroke="#e46d2f" stroke-width="3" stroke-dasharray="10 10" marker-end="url(#orange-arrow)" />
+    <path d="M 1282 756 C 1305 748 1325 764 1352 756" fill="none" stroke="#e46d2f" stroke-width="3" marker-end="url(#orange-arrow)" />
+    <g font-family="Comic Sans MS, Chalkboard SE, KaiTi, sans-serif" fill="#171717" text-anchor="middle">
+        <text x="1172" y="738" font-size="27" font-weight="700">Exception Filter</text>
+        <text x="1172" y="774" font-size="19">status · code · message</text>
+        <text x="1467" y="738" font-size="27" font-weight="700">Error Response</text>
+        <text x="1467" y="774" font-size="19">one stable contract</text>
+    </g>
+
+    <text x="950" y="872" text-anchor="middle" font-family="Comic Sans MS, Chalkboard SE, KaiTi, sans-serif" font-size="20" fill="#555">Global policy is registered once · route files stay native · every stage is pluggable</text>
+</svg>

@@ -1,100 +1,158 @@
 # next-route-kit
 
-The Next.js App Router entry package for `next-route-kit`.
+The Next.js App Router entry package.
 
 ```bash
-pnpm add next-route-kit
+npm install next-route-kit
 ```
 
-User documentation: [English guide](https://github.com/tech-zjf/next-route-kit/blob/main/docs/en/README.md) ·
-[简体中文指南](https://github.com/tech-zjf/next-route-kit/blob/main/docs/zh-CN/README.md) · [API reference](https://github.com/tech-zjf/next-route-kit/blob/main/docs/en/user-guide/api-reference.md)
+Start with the [English user guide](https://github.com/tech-zjf/next-route-kit/blob/main/docs/en/README.md),
+[简体中文指南](https://github.com/tech-zjf/next-route-kit/blob/main/docs/zh-CN/README.md),
+or the [repository README](https://github.com/tech-zjf/next-route-kit#readme).
 
-Use it when real application routes repeat the same authentication, request
-ID, validation, response envelope, and error mapping code. Define those
-policies on a shared Factory, derive scopes for protected resources, and keep
-each Route Handler focused on its business operation. See the [English real
-user scenario](https://github.com/tech-zjf/next-route-kit/blob/main/docs/en/user-guide/why-route-kit.md)
-or [简体中文真实用户场景](https://github.com/tech-zjf/next-route-kit/blob/main/docs/zh-CN/user-guide/why-route-kit.md).
+## Native route API
 
 ```ts
-import { createRoute, headers, jsonBody, params, query } from 'next-route-kit'
+import { createRoute, jsonBody, query } from 'next-route-kit'
+
+type ArticleParams = { id: string }
+type UpdateInput = { title?: string }
 
 const route = createRoute({
-    middleware: [requestLogger()],
-    guards: [requireUser()],
+    guards: [requireUser],
 })
 
-export const GET = route({
-    handler: async ({ params }) => {
-        return { id: params.id }
+export const GET = route<ArticleParams>({
+    handler: async (request, { params, locals }) => {
+        return articleService.find(params.id, locals.userId)
     },
 })
 
-export const POST = route({
-    input: {
-        body: jsonBody<{ name: string }>(),
-        query: query(),
-        params: params<{ id: string }>(),
-        headers: headers(),
-    },
-    handler: async ({ input }) => {
-        return {
-            id: input.params.id,
-            name: input.body.name,
-            preview: input.query.preview,
-            authorization: input.headers.get('authorization'),
-        }
+export const PATCH = route<ArticleParams, UpdateInput>({
+    body: jsonBody<UpdateInput>(),
+    handler: async (_request, { params, body, locals }) => {
+        return articleService.update(params.id, locals.userId, body)
     },
 })
 ```
 
-For runtime-specific routes, keep the Factory target aligned with Next.js's
-module export. The Core registry then fails early if a plugin declares an
-incompatible runtime:
+The handler is always `(request, context)`. `request` is the native Web
+`Request`; `context.params` contains Next dynamic params and
+`context.locals` contains request-local values written by middleware or guards.
+
+Declare `body` or `query` only when automatic resolution is useful:
 
 ```ts
-export const runtime = 'edge'
-const route = createRoute({ runtime: 'edge', plugins: [edgeTracing()] })
+export const POST = route({
+    body: jsonBody<{ name: string }>(),
+    query: query<{ preview?: string }>(),
+    handler: (_request, { body, query: values }) => ({
+        name: body.name,
+        preview: values.preview === 'true',
+    }),
+})
 ```
 
-The diagnostic is static configuration validation; it does not replace Next.js
-bundle checks, so Node-only plugin imports must still stay out of Edge entrypoints.
+Raw headers, URL, streaming bodies, files, and special responses remain on the
+native `Request`/`Response` boundary.
 
-`createRoute` is a class-backed root Factory. A configured Factory is explicit
-and immutable. Use `route.extend({ ... })` to create a scope factory for a group
-of routes. The returned function is a normal Next.js
-Route Handler and can be exported as `GET`, `POST`, or another supported method.
+## Factory scopes
 
-`createRoute` does not scan files, replace the App Router, or require runtime
-registration in `next.config.ts`.
+```ts
+const apiRoute = createRoute({ middleware, interceptors, exceptionFilters })
+const authenticatedRoute = apiRoute.extend({ guards: [requireUser] })
+```
 
-The request lifecycle is fixed and explicit:
+`extend()` returns a new immutable scope. It does not mutate the parent and
+does not require a `next.config.ts` registration.
+
+## Stable API responses
+
+For applications that use a business-code contract, register the optional
+plugin once:
+
+```ts
+import { ApiException, apiResponsePlugin, createRoute } from 'next-route-kit'
+
+const ResponseCode = {
+    SUCCESS: { code: 'OK', msg: 'Success' },
+    QUOTA_EXCEEDED: { code: 'QUOTA_EXCEEDED', msg: 'Quota exceeded', status: 409 },
+    INTERNAL_ERROR: { code: 'INTERNAL_ERROR', msg: 'Internal server error' },
+} as const
+
+const apiRoute = createRoute({
+    plugins: [apiResponsePlugin({ success: ResponseCode.SUCCESS, systemError: ResponseCode.INTERNAL_ERROR })],
+})
+
+export const POST = apiRoute({
+    handler: async () => {
+        if (/* application rule */ false) {
+            throw new ApiException(ResponseCode.QUOTA_EXCEEDED)
+        }
+
+        return { resourceId: 'resource-demo' }
+    },
+})
+```
+
+Plain object results and `ApiException` values are converted to one
+`{ code, msg, data }` envelope. `data` is always an object. The code constants
+remain application-owned, so a client can handle common auth/quota codes
+globally and feature-specific codes locally. Native `Response` values pass
+through unchanged.
+
+The pipeline is:
 
 ```text
-Middleware → Guard → Input Resolver → Input Pipe → Interceptor → Handler
+Next params → Middleware → Guard → Interceptor enter
+→ declared arguments → Pipe → Handler → Interceptor exit → Response
 ```
 
-Guards therefore run before route input is resolved or a request body is read.
-The adapter hydrates `context.params` before middleware and guards so route
-authorization can use dynamic params without reading the request body.
-The main package also adds `defaultErrorMapper()` after user mappers. It maps
-`HttpError` and malformed JSON bodies to JSON responses; custom mappers can
-override those responses by returning a response first.
+Errors go through `ExceptionFilter.catch()`. The package supplies a default
+filter for `HttpError` and malformed JSON, plus a default JSON serializer. A
+native `Response` returned by a handler passes through unchanged.
 
-The tested compatibility baseline is Next.js 15.5.23 and 16.3.1. See the
-repository [English runtime and troubleshooting guide](https://github.com/tech-zjf/next-route-kit/blob/main/docs/en/user-guide/troubleshooting.md)
-or [简体中文问题排查指南](https://github.com/tech-zjf/next-route-kit/blob/main/docs/zh-CN/user-guide/troubleshooting.md) for
-the upgrade boundary and the [release notes](https://github.com/tech-zjf/next-route-kit/blob/main/docs/release/v0.1.0.md) for
-the 0.1.0 public contract.
+See the root README for RESTful examples and the user guides for API details.
 
-Next.js 15 and later expose dynamic route `params` asynchronously. The exported
-Route Handler type keeps that Promise-based signature for Next's build-time
-checks, while direct one-argument calls remain supported in tests and adapters.
+## Custom plugins
 
-`input` can be a direct value, a resolver function, a single `InputSource`, or an
-object composed from input sources. The built-in sources are `jsonBody()` (with
-`body()` as its short alias), `textBody()`, `query()`, `params()`, and
-`headers()`. Use `defineInputSource()` for application-specific sources; input
-validation remains an optional concern implemented by Input Pipes or adapters.
-Input Pipes receive the source metadata through their `metadata` argument;
-composed input maps expose field-level metadata under `metadata.fields`.
+Create a class that implements `RoutePlugin` and return reusable lifecycle
+components from `install()`:
+
+```ts
+import { createRoute, type RoutePlugin } from 'next-route-kit'
+
+class RequestTimingPlugin implements RoutePlugin {
+    readonly name = 'request-timing'
+    readonly runtime = 'both' as const
+
+    install() {
+        return {
+            interceptors: [
+                {
+                    name: 'request-timing',
+                    async intercept(_context, next) {
+                        const startedAt = Date.now()
+
+                        try {
+                            return await next()
+                        } finally {
+                            console.info('durationMs:', Date.now() - startedAt)
+                        }
+                    },
+                },
+            ],
+        }
+    }
+}
+
+const route = createRoute({
+    plugins: [new RequestTimingPlugin()],
+})
+```
+
+Plugins can contribute middleware, guards, pipes, interceptors,
+exceptionFilters, or one responseSerializer. Register them on the base Factory,
+on `extend()` for a subgroup, or with route-local `use: [plugin]`. The detailed
+[plugin guide](https://github.com/tech-zjf/next-route-kit/blob/main/docs/en/user-guide/plugins.md)
+documents the lifecycle order and scope rules.

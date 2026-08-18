@@ -5,26 +5,27 @@
 
 ## Context
 
-`InputPipe` already receives an `InputMetadata` argument, but the first adapter
-implementation always passed `{ location: 'custom', name: 'route-input' }`.
+`Pipe` already receives an `ArgumentMetadata` argument, but the first adapter
+implementation always passed `{ type: 'custom', name: 'route-arguments' }`.
 That made it impossible for a validator or schema adapter to distinguish body,
 query, params, headers, and custom input without coupling itself to the Next
 adapter.
 
 ## Decision
 
-`RouteContext` may carry an optional `inputMetadata` value. The Core Pipeline
-passes that value unchanged to every `InputPipe`. If a caller creates a legacy
-context without metadata, Core preserves the existing
-`custom/route-input` fallback.
+`RouteContext` may carry an optional `argumentMetadata` value. The Core Pipeline
+passes field metadata to each `Pipe`. If a caller creates a context without
+metadata, Core uses the `custom/route-arguments` fallback for an advanced
+whole-args pipe.
 
 The Next adapter derives immutable metadata when compiling a route:
 
-- a single `InputSource` exposes its `location` and `name`;
-- a composed input map exposes a `custom/route-input` container and a
+- a single `InputSource` exposes its source `location` and `name`, which the
+  adapter maps to `ArgumentMetadata.type`;
+- a composed input map exposes a `custom/route-arguments` container and a
   field-level `fields` map;
 - literal fields in a mixed map are marked `custom` and named after their key;
-- resolver functions and direct values use the fallback metadata because their
+- resolver functions use the fallback metadata because their
   runtime origin cannot be known at compile time.
 
 ## Consequences
@@ -35,4 +36,4 @@ The Next adapter derives immutable metadata when compiling a route:
 - Existing route contexts and Core callers remain source-compatible because the
   context property is optional.
 - Metadata describes origin, not validation rules or parsed values; those remain
-  the responsibility of Input Pipes and optional packages.
+  the responsibility of Pipes and optional packages.

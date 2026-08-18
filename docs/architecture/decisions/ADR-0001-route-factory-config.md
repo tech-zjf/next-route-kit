@@ -20,10 +20,10 @@ export const route = createRoute({
 })
 ```
 
-主包会自动追加内置 `defaultErrorMapper()`；此处只需要注册业务自定义的
-Error Mapper。
+主包会自动追加内置 `defaultExceptionFilter()`；此处只需要注册业务自定义的
+ExceptionFilter。
 
-The configuration module does not have to be named `route-infra.config.ts` or live at the project root. Route files import the Factory and export the resulting handler:
+The configuration module does not need a special filename or a root-level location. Route files import the Factory and export the resulting handler:
 
 ```ts
 export const GET = route({ handler })

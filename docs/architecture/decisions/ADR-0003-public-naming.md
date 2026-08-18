@@ -5,7 +5,7 @@
 
 ## Context
 
-The original name `next-route-infra` is descriptive but long and uses `infra`, which is broad and not especially memorable for application developers. The project also uses terms inspired by NestJS, but not every Next.js developer will share NestJS terminology.
+The earlier infrastructure-oriented name was descriptive but long and not especially memorable for application developers. The public API should use terms that describe the responsibility directly and avoid framework-specific ceremony.
 
 ## Decision
 
@@ -28,27 +28,26 @@ next-route-kit              # recommended user-facing package
 
 ## Public terminology
 
-| Concept                         | Public name                           | Reason                                                         |
-| ------------------------------- | ------------------------------------- | -------------------------------------------------------------- |
-| Route Handler wrapper           | `createRoute`                         | Directly describes the operation                               |
-| Configured Factory              | `createRoute`                         | Short, direct, and returns a reusable `route(options)` Factory |
-| Optional config helper          | `defineRouteConfig`                   | Optional type-safety helper; not required for basic usage      |
-| Request context                 | `RouteContext`                        | Common server-framework term                                   |
-| Middleware                      | `RouteMiddleware` / `use`             | Avoids confusion with Next `middleware.ts` and `proxy.ts`      |
-| Authorization                   | `Guard`                               | Recognizable and precise for admission checks                  |
-| Input validation/transformation | `input`, `validateBody`, `parseQuery` | User-facing API avoids requiring NestJS knowledge              |
-| Advanced input stage            | `InputPipe`                           | Retained for plugin authors and NestJS familiarity             |
-| Around behavior                 | `Interceptor`                         | Accurate for before/after execution                            |
-| Exception conversion            | `ErrorMapper`                         | More precise than a generic `ErrorHandler`                     |
-| Data-to-Response conversion     | `ResponseSerializer`                  | More precise than `ResponseWriter` for normal JSON responses   |
-| Extensible capability           | `RoutePlugin`                         | Standard ecosystem term                                        |
-| Child configuration             | `extend`                              | Familiar immutable composition model                           |
+| Concept                         | Public name                                          | Reason                                                        |
+| ------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------- |
+| Factory constructor             | `createRoute`                                        | Directly describes creation of a reusable Route Factory       |
+| Configured Factory              | `Factory` / callable `route`                         | Class ownership with a short Route Handler syntax             |
+| Request-local shared values     | `locals`                                             | Clearer than the overloaded `state` term                      |
+| Route input                     | `body`, `query`, native `request`                    | Optional named values without forcing an input wrapper        |
+| Input source helper             | `jsonBody`, `textBody`, `query`, `defineInputSource` | Describes where a value comes from                            |
+| Input validation/transformation | `Pipe` / `transform`                                 | Familiar server-pipeline term and precise responsibility      |
+| Request admission               | `Guard` / `canActivate`                              | Recognizable and precise for authentication and authorization |
+| Around behavior                 | `Interceptor` / `intercept`                          | Accurate for before/after execution                           |
+| Exception conversion            | `ExceptionFilter` / `catch`                          | Matches the failure boundary and avoids vague error mapping   |
+| Data-to-Response conversion     | `ResponseSerializer`                                 | Precise for normal JSON responses                             |
+| Extensible capability           | `RoutePlugin`                                        | Standard ecosystem term                                       |
+| Child configuration             | `extend`                                             | Familiar immutable composition model                          |
 
 ## Rejected names
 
-### `next-route-infra`
+### Earlier infrastructure-oriented name
 
-Rejected as the public brand because it is long and infrastructure-oriented.
+Rejected as the public brand because it was long and infrastructure-oriented.
 
 ### `next-route-compose`
 

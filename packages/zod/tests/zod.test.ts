@@ -1,18 +1,25 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { ZodValidationError, zodErrorMapper, zodPipe } from '../src/index.js'
+import { ZodValidationError, zodExceptionFilter, zodPipe } from '../src/index.js'
 
 describe('zod adapter', () => {
-    it('validates and transforms input with inferred output types', async () => {
+    it('validates and transforms one route argument with inferred output types', async () => {
         const schema = z.object({ id: z.string(), count: z.number() })
         const pipe = zodPipe(schema)
-        const value: z.output<typeof schema> = await pipe.transform({ id: 'route-1', count: 2 }, { location: 'custom', name: 'route-input' })
+        const value: z.output<typeof schema> = await pipe.transform({ id: 'route-1', count: 2 }, { type: 'body', name: 'json-body' })
 
         expect(value).toEqual({ id: 'route-1', count: 2 })
     })
 
+    it('can target only one argument when a route declares body and query', async () => {
+        const pipe = zodPipe(z.object({ id: z.string() }), { appliesTo: 'body' })
+        const queryValue = { page: '1' }
+
+        await expect(pipe.transform(queryValue, { type: 'query', name: 'query' })).resolves.toEqual(queryValue)
+    })
+
     it('wraps schema issues with immutable metadata', async () => {
-        const metadata = Object.freeze({ location: 'body' as const, name: 'json-body' })
+        const metadata = Object.freeze({ type: 'body' as const, name: 'json-body' })
         const pipe = zodPipe(z.object({ id: z.string().min(1) }))
 
         await expect(pipe.transform({ id: '' }, metadata)).rejects.toMatchObject({
@@ -30,18 +37,14 @@ describe('zod adapter', () => {
     })
 
     it('maps validation failures to a configurable JSON response', async () => {
-        const mapper = zodErrorMapper({ status: 422, code: 'INVALID_INPUT' })
-        const error = new ZodValidationError(
-            { issues: [{ code: 'custom', message: 'id is required', path: ['id'] }] },
-            {},
-            { location: 'custom', name: 'route-input' },
-        )
+        const filter = zodExceptionFilter({ status: 422, code: 'INVALID_INPUT' })
+        const error = new ZodValidationError({ issues: [{ code: 'custom', message: 'id is required', path: ['id'] }] }, {}, { type: 'body', name: 'json-body' })
 
-        const response = mapper.map(error, {
+        const response = filter.catch(error, {
             request: new Request('https://example.test'),
             params: {},
-            input: {},
-            state: {},
+            args: {},
+            locals: {},
             meta: {},
         })
 
@@ -55,11 +58,11 @@ describe('zod adapter', () => {
 
     it('ignores unrelated errors', () => {
         expect(
-            zodErrorMapper().map(new Error('unrelated'), {
+            zodExceptionFilter().catch(new Error('unrelated'), {
                 request: new Request('https://example.test'),
                 params: {},
-                input: {},
-                state: {},
+                args: {},
+                locals: {},
                 meta: {},
             }),
         ).toBeUndefined()

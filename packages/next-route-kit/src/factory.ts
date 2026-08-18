@@ -1,49 +1,53 @@
 import {
     RoutePipeline,
     RoutePluginRegistry,
-    type ErrorMapper,
+    type ArgumentMetadata,
+    type ExceptionFilter,
     type Guard,
-    type InputMetadata,
-    type InputPipe,
     type Interceptor,
+    type Pipe,
     type ResponseSerializer,
     type RouteContext,
-    type RouteHandler,
-    type RouteMiddleware,
     type RouteMeta,
+    type RouteMiddleware,
     type RouteParams,
     type RouteRuntime,
 } from '@next-route-kit/core'
 import { InputSource } from './input.js'
-import { defaultErrorMapper, InvalidJsonBodyError } from './errors.js'
-import type { ResolvedRouteInput, RouteInputDefinition } from './input.js'
+import { defaultExceptionFilter, InvalidJsonBodyError } from './errors.js'
+import type { RouteInputDefinition } from './input.js'
 import type {
     AnyRouteContext,
-    DefaultRouteState,
+    DefaultRouteLocals,
     JsonResponseOptions,
     NextRouteHandler,
     NextRouteHandlerContext,
     RootRouteFactory,
     RouteFactory,
     RouteFactoryConfig,
+    RouteHandlerContext,
     RouteInputContext,
-    RouteInputResolver,
     RouteOptions,
 } from './types.js'
 
-interface RouteConfigLayer<TState> {
+type RouteArgumentDefinitions<TParams extends RouteParams, TLocals> = Readonly<{
+    readonly body?: RouteInputDefinition<unknown, TParams, TLocals>
+    readonly query?: RouteInputDefinition<unknown, TParams, TLocals>
+}>
+
+interface RouteConfigLayer<TLocals> {
     readonly runtime: RouteRuntime | undefined
     readonly pluginRegistry: RoutePluginRegistry
-    readonly middleware: readonly RouteMiddleware<AnyRouteContext<TState>>[]
-    readonly guards: readonly Guard<AnyRouteContext<TState>>[]
-    readonly inputPipes: readonly InputPipe<unknown, unknown, AnyRouteContext<TState>>[]
-    readonly interceptors: readonly Interceptor<AnyRouteContext<TState>>[]
-    readonly errorMappers: readonly ErrorMapper<AnyRouteContext<TState>>[]
-    readonly responseSerializer: ResponseSerializer<unknown, AnyRouteContext<TState>> | undefined
+    readonly middleware: readonly RouteMiddleware<AnyRouteContext<TLocals>>[]
+    readonly guards: readonly Guard<AnyRouteContext<TLocals>>[]
+    readonly pipes: readonly Pipe<unknown, unknown, AnyRouteContext<TLocals>>[]
+    readonly interceptors: readonly Interceptor<AnyRouteContext<TLocals>>[]
+    readonly exceptionFilters: readonly ExceptionFilter<AnyRouteContext<TLocals>>[]
+    readonly responseSerializer: ResponseSerializer<unknown, AnyRouteContext<TLocals>> | undefined
 }
 
-interface ResolvedRouteConfig<TState> extends RouteConfigLayer<TState> {
-    readonly responseSerializer: ResponseSerializer<unknown, AnyRouteContext<TState>>
+interface ResolvedRouteConfig<TLocals> extends RouteConfigLayer<TLocals> {
+    readonly responseSerializer: ResponseSerializer<unknown, AnyRouteContext<TLocals>>
 }
 
 type FactoryMode = 'root' | 'configured'
@@ -52,30 +56,30 @@ type FactoryMode = 'root' | 'configured'
  * The application-owned Route Factory.
  *
  * A configured Factory is callable because its constructor returns a small
- * callable proxy. The class still owns configuration resolution, plugin
+ * callable proxy. The class owns configuration resolution, plugin
  * installation, immutable scope derivation, and route compilation; the proxy
- * only preserves the ergonomic `route({ handler })` API.
+ * only preserves the ergonomic route({ handler }) API.
  */
-export class Factory<TState = DefaultRouteState> {
-    private readonly _config: ResolvedRouteConfig<TState>
+export class Factory<TLocals = DefaultRouteLocals> {
+    private readonly _config: ResolvedRouteConfig<TLocals>
 
-    constructor(config: RouteFactoryConfig<TState> = {}, mode: FactoryMode = 'configured') {
+    constructor(config: RouteFactoryConfig<TLocals> = {}, mode: FactoryMode = 'configured') {
         this._config = Factory.normalize(config)
         return Factory.createCallable(this, mode) as unknown as this
     }
 
     /** Read the compiled immutable configuration snapshot. */
-    get config(): Readonly<RouteFactoryConfig<TState>> {
+    get config(): Readonly<RouteFactoryConfig<TLocals>> {
         return Factory.asFactoryConfig(this._config)
     }
 
     /**
      * Derive a child Factory without modifying this Factory.
      *
-     * Array components append in global → scope order. Error mappers prepend so
-     * the most local mapper gets the first chance to handle an error.
+     * Array components append in global → scope order. Exception filters
+     * prepend so a route-local filter gets the first chance to handle errors.
      */
-    extend(config: RouteFactoryConfig<TState>): Factory<TState> {
+    extend(config: RouteFactoryConfig<TLocals>): Factory<TLocals> {
         const child = Factory.resolveLayer(config)
         const merged = Factory.merge(this._config, child)
         return Factory.fromResolved(merged)
@@ -87,24 +91,27 @@ export class Factory<TState = DefaultRouteState> {
      * Plugin installation and pipeline compilation happen once here, not for
      * every request.
      */
-    create<TParams extends RouteParams = RouteParams, TInput = unknown, TResult = unknown>(
-        options: RouteOptions<TParams, TInput, TState, TResult>,
+    create<TParams extends RouteParams = RouteParams, TBody = never, TQuery = never, TResult = unknown>(
+        options: RouteOptions<TParams, TBody, TQuery, TLocals, TResult>,
     ): NextRouteHandler<TParams> {
-        const inputDefinition = Factory.snapshotInputDefinition(options.input)
+        const argumentDefinitions = Factory.snapshotArgumentDefinitions<TParams, TBody, TQuery, TLocals>(options.body, options.query)
         const routeConfig = Factory.resolveLayer(Factory.pickRouteConfig(options))
         const merged = Factory.merge(this._config, routeConfig)
-        const pipeline = new RoutePipeline<AnyRouteContext<TState>, unknown>({
+        const pipeline = new RoutePipeline<AnyRouteContext<TLocals>, unknown>({
             middleware: merged.middleware,
             guards: merged.guards,
-            inputPipes: merged.inputPipes,
+            pipes: merged.pipes,
             interceptors: merged.interceptors,
-            errorMappers: merged.errorMappers,
+            exceptionFilters: merged.exceptionFilters,
             responseSerializer: merged.responseSerializer,
-            handler: options.handler as unknown as RouteHandler<AnyRouteContext<TState>, unknown>,
+            handler: async (context) => {
+                const handlerContext = Factory.createHandlerContext<TParams, TBody, TQuery, TLocals>(context, argumentDefinitions)
+                return options.handler(context.request, handlerContext as RouteHandlerContext<TParams, TBody, TQuery, TLocals>)
+            },
         })
 
         return async (request: Request, nextContext?: NextRouteHandlerContext<TParams> | { readonly params: TParams }) => {
-            const state = {} as TState
+            const locals = {} as TLocals
             let bodyTextPromise: Promise<string> | undefined
             let bodyPromise: Promise<unknown> | undefined
 
@@ -122,59 +129,69 @@ export class Factory<TState = DefaultRouteState> {
                 })
                 return bodyPromise as Promise<T>
             }
+
             const pathname = Factory.resolvePathname(request)
             const meta: RouteMeta = {
                 ...(pathname === undefined ? { method: request.method } : { method: request.method, pathname }),
                 ...(merged.runtime === undefined ? {} : { runtime: merged.runtime }),
             }
-            const context: RouteContext<TParams, ResolvedRouteInput<TInput>, TState> = {
+            const argumentMetadata = Factory.resolveArgumentMetadata(argumentDefinitions)
+            const context: RouteContext<TParams, Record<string, unknown>, TLocals> = {
                 request,
                 params: {} as TParams,
-                input: undefined as ResolvedRouteInput<TInput>,
-                inputMetadata: Factory.resolveInputMetadata(inputDefinition),
-                state,
+                args: {},
+                ...(argumentMetadata === undefined ? {} : { argumentMetadata }),
+                locals,
                 meta,
             }
 
             return pipeline.execute(
-                context as AnyRouteContext<TState>,
+                context as AnyRouteContext<TLocals>,
                 async () => {
-                    context.input = (await Factory.resolveInput(inputDefinition as RouteInputDefinition<TInput, TParams, TState>, {
-                        request,
-                        params: context.params,
-                        state,
-                        readBody,
-                        readText,
-                    })) as ResolvedRouteInput<TInput>
+                    const resolvedEntries = await Promise.all(
+                        Object.entries(argumentDefinitions).map(async ([name, definition]) => {
+                            const value = await Factory.resolveArgument(definition, {
+                                request,
+                                params: context.params,
+                                locals,
+                                readBody,
+                                readText,
+                            })
+
+                            return [name, value] as const
+                        }),
+                    )
+
+                    context.args = Object.fromEntries(resolvedEntries)
                 },
-                async (preparedContext: AnyRouteContext<TState>) => {
+                async (preparedContext: AnyRouteContext<TLocals>) => {
                     preparedContext.params = (await Promise.resolve(nextContext?.params ?? {})) as TParams
                 },
             )
         }
     }
 
-    private static normalize<TState>(config: RouteFactoryConfig<TState>): ResolvedRouteConfig<TState> {
+    private static normalize<TLocals>(config: RouteFactoryConfig<TLocals>): ResolvedRouteConfig<TLocals> {
         const layer = Factory.resolveLayer(config)
         return Factory.freeze({
             ...layer,
-            errorMappers: [...layer.errorMappers, defaultErrorMapper()],
+            exceptionFilters: [...layer.exceptionFilters, defaultExceptionFilter()],
             responseSerializer: layer.responseSerializer ?? jsonResponse(),
-        }) as ResolvedRouteConfig<TState>
+        }) as ResolvedRouteConfig<TLocals>
     }
 
-    private static freeze<TState>(config: RouteConfigLayer<TState>): Readonly<RouteConfigLayer<TState>> {
+    private static freeze<TLocals>(config: RouteConfigLayer<TLocals>): Readonly<RouteConfigLayer<TLocals>> {
         return Object.freeze({
             ...config,
             middleware: Object.freeze([...config.middleware]),
             guards: Object.freeze([...config.guards]),
-            inputPipes: Object.freeze([...config.inputPipes]),
+            pipes: Object.freeze([...config.pipes]),
             interceptors: Object.freeze([...config.interceptors]),
-            errorMappers: Object.freeze([...config.errorMappers]),
+            exceptionFilters: Object.freeze([...config.exceptionFilters]),
         })
     }
 
-    private static resolveLayer<TState>(config: RouteFactoryConfig<TState>): RouteConfigLayer<TState> {
+    private static resolveLayer<TLocals>(config: RouteFactoryConfig<TLocals>): RouteConfigLayer<TLocals> {
         const pluginRegistry = new RoutePluginRegistry(config.plugins)
         const contributions = pluginRegistry.snapshot(config.runtime)
         const responseSerializer = config.responseSerializer ?? config.response ?? contributions.responseSerializer
@@ -184,14 +201,14 @@ export class Factory<TState = DefaultRouteState> {
             pluginRegistry,
             middleware: [...(config.middleware ?? []), ...contributions.middleware],
             guards: [...(config.guards ?? []), ...contributions.guards],
-            inputPipes: [...(config.inputPipes ?? []), ...contributions.inputPipes],
+            pipes: [...(config.pipes ?? []), ...contributions.pipes],
             interceptors: [...(config.interceptors ?? []), ...contributions.interceptors],
-            errorMappers: [...(config.errorMappers ?? []), ...contributions.errorMappers],
-            responseSerializer: responseSerializer as ResponseSerializer<unknown, AnyRouteContext<TState>> | undefined,
+            exceptionFilters: [...(config.exceptionFilters ?? []), ...contributions.exceptionFilters],
+            responseSerializer: responseSerializer as ResponseSerializer<unknown, AnyRouteContext<TLocals>> | undefined,
         }
     }
 
-    private static merge<TState>(parent: ResolvedRouteConfig<TState>, child: RouteConfigLayer<TState>): ResolvedRouteConfig<TState> {
+    private static merge<TLocals>(parent: ResolvedRouteConfig<TLocals>, child: RouteConfigLayer<TLocals>): ResolvedRouteConfig<TLocals> {
         const runtime = child.runtime ?? parent.runtime
         const pluginRegistry = parent.pluginRegistry.compose(child.pluginRegistry)
         pluginRegistry.validateRuntime(runtime)
@@ -201,87 +218,83 @@ export class Factory<TState = DefaultRouteState> {
             pluginRegistry,
             middleware: [...parent.middleware, ...child.middleware],
             guards: [...parent.guards, ...child.guards],
-            inputPipes: [...parent.inputPipes, ...child.inputPipes],
+            pipes: [...parent.pipes, ...child.pipes],
             interceptors: [...parent.interceptors, ...child.interceptors],
-            errorMappers: [...child.errorMappers, ...parent.errorMappers],
+            exceptionFilters: [...child.exceptionFilters, ...parent.exceptionFilters],
             responseSerializer: child.responseSerializer ?? parent.responseSerializer,
-        }) as ResolvedRouteConfig<TState>
+        }) as ResolvedRouteConfig<TLocals>
     }
 
-    private static asFactoryConfig<TState>(config: ResolvedRouteConfig<TState>): RouteFactoryConfig<TState> {
+    private static asFactoryConfig<TLocals>(config: ResolvedRouteConfig<TLocals>): RouteFactoryConfig<TLocals> {
         return Object.freeze({
             ...(config.runtime === undefined ? {} : { runtime: config.runtime }),
             middleware: config.middleware,
             guards: config.guards,
-            inputPipes: config.inputPipes,
+            pipes: config.pipes,
             interceptors: config.interceptors,
-            errorMappers: config.errorMappers,
+            exceptionFilters: config.exceptionFilters,
             responseSerializer: config.responseSerializer,
         })
     }
 
-    private static pickRouteConfig<TParams extends RouteParams, TInput, TState, TResult>(
-        options: RouteOptions<TParams, TInput, TState, TResult>,
-    ): RouteFactoryConfig<TState> {
+    private static pickRouteConfig<TParams extends RouteParams, TBody, TQuery, TLocals, TResult>(
+        options: RouteOptions<TParams, TBody, TQuery, TLocals, TResult>,
+    ): RouteFactoryConfig<TLocals> {
         const plugins = [...(options.plugins ?? []), ...(options.use ?? [])]
 
         return {
             ...(options.runtime ? { runtime: options.runtime } : {}),
             ...(options.middleware ? { middleware: options.middleware } : {}),
             ...(options.guards ? { guards: options.guards } : {}),
-            ...(options.inputPipes ? { inputPipes: options.inputPipes } : {}),
+            ...(options.pipes ? { pipes: options.pipes } : {}),
             ...(options.interceptors ? { interceptors: options.interceptors } : {}),
-            ...(options.errorMappers ? { errorMappers: options.errorMappers } : {}),
+            ...(options.exceptionFilters ? { exceptionFilters: options.exceptionFilters } : {}),
             ...(options.responseSerializer ? { responseSerializer: options.responseSerializer } : {}),
             ...(options.response ? { response: options.response } : {}),
             ...(plugins.length ? { plugins } : {}),
         }
     }
 
-    private static async resolveInput<TParams extends RouteParams, TInput, TState>(
-        definition: RouteInputDefinition<TInput, TParams, TState>,
-        context: RouteInputContext<TParams, TState>,
-    ): Promise<ResolvedRouteInput<TInput>> {
+    private static async resolveArgument<TParams extends RouteParams, TLocals>(
+        definition: RouteInputDefinition<unknown, TParams, TLocals>,
+        context: RouteInputContext<TParams, TLocals>,
+    ): Promise<unknown> {
         if (definition instanceof InputSource) {
-            return (await definition.resolve(context)) as ResolvedRouteInput<TInput>
+            return definition.resolve(context)
         }
 
-        if (typeof definition === 'function') {
-            return (await (definition as RouteInputResolver<TParams, ResolvedRouteInput<TInput>, TState>)(context)) as ResolvedRouteInput<TInput>
-        }
-
-        if (Factory.isInputSourceMap(definition)) {
-            const resolvedEntries = await Promise.all(
-                Object.entries(definition).map(async ([key, value]) => [key, value instanceof InputSource ? await value.resolve(context) : value] as const),
-            )
-            return Object.fromEntries(resolvedEntries) as ResolvedRouteInput<TInput>
-        }
-
-        return definition as ResolvedRouteInput<TInput>
+        return definition(context)
     }
 
-    private static resolveInputMetadata<TDefinition>(definition: TDefinition): InputMetadata {
-        if (definition instanceof InputSource) {
-            return Factory.freezeInputMetadata({ location: definition.location, name: definition.name })
+    private static resolveArgumentMetadata<TParams extends RouteParams, TLocals>(
+        definitions: RouteArgumentDefinitions<TParams, TLocals>,
+    ): ArgumentMetadata | undefined {
+        const fields = Object.fromEntries(
+            Object.entries(definitions).map(([name, definition]) => [
+                name,
+                Factory.freezeArgumentMetadata({
+                    // The field key is the public input location even when the
+                    // resolver is a custom function rather than an InputSource.
+                    // Pipes such as zodPipe({ appliesTo: 'body' }) must not
+                    // lose that information just because parsing is customized.
+                    type: definition instanceof InputSource ? definition.location : name === 'body' || name === 'query' ? name : 'custom',
+                    name: definition instanceof InputSource ? definition.name : name,
+                }),
+            ]),
+        )
+
+        if (Object.keys(fields).length === 0) {
+            return undefined
         }
 
-        if (Factory.isInputSourceMap(definition)) {
-            const fields = Object.fromEntries(
-                Object.entries(definition).map(([key, value]) => [
-                    key,
-                    value instanceof InputSource
-                        ? Factory.freezeInputMetadata({ location: value.location, name: value.name })
-                        : Factory.freezeInputMetadata({ location: 'custom', name: key }),
-                ]),
-            )
-
-            return Factory.freezeInputMetadata({ location: 'custom', name: 'route-input', fields })
-        }
-
-        return Factory.freezeInputMetadata({ location: 'custom', name: 'route-input' })
+        return Factory.freezeArgumentMetadata({
+            type: 'custom',
+            name: 'route-arguments',
+            fields,
+        })
     }
 
-    private static freezeInputMetadata(metadata: InputMetadata): InputMetadata {
+    private static freezeArgumentMetadata(metadata: ArgumentMetadata): ArgumentMetadata {
         if (!metadata.fields) {
             return Object.freeze({ ...metadata })
         }
@@ -292,21 +305,27 @@ export class Factory<TState = DefaultRouteState> {
         })
     }
 
-    private static snapshotInputDefinition<TDefinition>(definition: TDefinition): TDefinition {
-        if (Factory.isInputSourceMap(definition)) {
-            return Object.freeze({ ...definition }) as TDefinition
-        }
-
-        return definition
+    private static snapshotArgumentDefinitions<TParams extends RouteParams, TBody, TQuery, TLocals>(
+        body: RouteInputDefinition<TBody, TParams, TLocals> | undefined,
+        query: RouteInputDefinition<TQuery, TParams, TLocals> | undefined,
+    ): RouteArgumentDefinitions<TParams, TLocals> {
+        return Object.freeze({
+            ...(body === undefined ? {} : { body: body as RouteInputDefinition<unknown, TParams, TLocals> }),
+            ...(query === undefined ? {} : { query: query as RouteInputDefinition<unknown, TParams, TLocals> }),
+        })
     }
 
-    private static isInputSourceMap(value: unknown): value is Readonly<Record<string, unknown>> {
-        if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-            return false
-        }
-
-        const values = Object.values(value)
-        return values.some((item) => item instanceof InputSource)
+    private static createHandlerContext<TParams extends RouteParams, TBody, TQuery, TLocals>(
+        context: AnyRouteContext<TLocals>,
+        definitions: RouteArgumentDefinitions<TParams, TLocals>,
+    ): RouteHandlerContext<TParams, TBody, TQuery, TLocals> {
+        return {
+            params: context.params as TParams,
+            locals: context.locals,
+            meta: context.meta,
+            ...(Object.hasOwn(definitions, 'body') ? { body: context.args.body as TBody } : {}),
+            ...(Object.hasOwn(definitions, 'query') ? { query: context.args.query as TQuery } : {}),
+        } as RouteHandlerContext<TParams, TBody, TQuery, TLocals>
     }
 
     private static resolvePathname(request: Request): string | undefined {
@@ -317,8 +336,8 @@ export class Factory<TState = DefaultRouteState> {
         }
     }
 
-    private static fromResolved<TState>(config: ResolvedRouteConfig<TState>): Factory<TState> {
-        const owner = Object.create(Factory.prototype) as Factory<TState>
+    private static fromResolved<TLocals>(config: ResolvedRouteConfig<TLocals>): Factory<TLocals> {
+        const owner = Object.create(Factory.prototype) as Factory<TLocals>
         Object.defineProperty(owner, '_config', {
             configurable: false,
             enumerable: false,
@@ -329,12 +348,13 @@ export class Factory<TState = DefaultRouteState> {
         return Factory.createCallable(owner)
     }
 
-    private static createCallable<TState>(owner: Factory<TState>, mode: FactoryMode = 'configured'): Factory<TState> {
+    private static createCallable<TLocals>(owner: Factory<TLocals>, mode: FactoryMode = 'configured'): Factory<TLocals> {
         const callable =
             mode === 'root'
-                ? (childConfig: RouteFactoryConfig<TState> = {}) => new Factory(childConfig)
-                : <TParams extends RouteParams = RouteParams, TInput = unknown, TResult = unknown>(options: RouteOptions<TParams, TInput, TState, TResult>) =>
-                      owner.create(options)
+                ? (childConfig: RouteFactoryConfig<TLocals> = {}) => new Factory(childConfig)
+                : <TParams extends RouteParams = RouteParams, TBody = never, TQuery = never, TResult = unknown>(
+                      options: RouteOptions<TParams, TBody, TQuery, TLocals, TResult>,
+                  ) => owner.create(options)
 
         const proxy = new Proxy(callable, {
             get(target, property, receiver) {
@@ -352,13 +372,13 @@ export class Factory<TState = DefaultRouteState> {
 
         Object.setPrototypeOf(proxy, Factory.prototype)
         Object.freeze(proxy)
-        return proxy as unknown as Factory<TState>
+        return proxy as unknown as Factory<TLocals>
     }
 }
 
-export interface Factory<TState = DefaultRouteState> extends RouteFactory<TState> {}
+export interface Factory<TLocals = DefaultRouteLocals> extends RouteFactory<TLocals> {}
 
-/** Callable root instance: `const route = createRoute({ ...config })`. */
+/** Callable root instance: const route = createRoute({ ...config }). */
 export const createRoute: RootRouteFactory = new Factory({}, 'root') as unknown as RootRouteFactory
 
 export function jsonResponse<TContext extends RouteContext<any, any, any> = RouteContext<any, any, any>>(

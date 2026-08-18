@@ -2,71 +2,46 @@
 
 **English** · [简体中文](../zh-CN/README.md)
 
-`next-route-kit` wraps native Next.js App Router Route Handlers with an
-explicit, typed request pipeline. It does not replace `app/**/route.ts`, the
-Next.js Router, `next.config.ts`, or `proxy.ts`.
+This is the user-facing documentation. The root README is the short overview;
+architecture and release material live under docs/architecture and docs/release.
 
 ## Install
 
 ```bash
-pnpm add next-route-kit
-```
-
-Optional packages:
-
-```bash
-pnpm add @next-route-kit/zod zod
-pnpm add -D @next-route-kit/testing
+npm install next-route-kit
+npm install @next-route-kit/zod zod       # optional
+npm install -D @next-route-kit/testing    # optional
 ```
 
 ## Start here
 
-- [Why use next-route-kit?](./user-guide/why-route-kit.md)
-- [Getting started](./user-guide/getting-started.md)
-- [Configuration and scopes](./user-guide/configuration.md)
-- [API reference](./user-guide/api-reference.md)
-- [Input sources and validation](./user-guide/input-and-validation.md)
-- [Pipeline, errors, and responses](./user-guide/pipeline-and-errors.md)
-- [Writing plugins](./user-guide/plugins.md)
-- [Migrating existing Route Handlers](./user-guide/migration.md)
-- [Testing](./user-guide/testing.md)
-- [Troubleshooting](./user-guide/troubleshooting.md)
+- [Why use it?](user-guide/why-route-kit.md)
+- [Getting started](user-guide/getting-started.md)
+- [Configuration and scopes](user-guide/configuration.md)
+- [Stable API response contracts](user-guide/api-response.md)
+- [API reference](user-guide/api-reference.md)
+- [Input and validation](user-guide/input-and-validation.md)
+- [Pipeline and errors](user-guide/pipeline-and-errors.md)
+- [Plugins](user-guide/plugins.md)
+- [Testing](user-guide/testing.md)
+- [Migration](user-guide/migration.md)
+- [Troubleshooting](user-guide/troubleshooting.md)
 
 ## The basic model
 
-Create one or more application-owned Factories and import the appropriate
-Factory from each Route Handler:
-
 ```ts
-// src/server/routes/index.ts
 import { createRoute } from 'next-route-kit'
 
-export const route = createRoute()
-```
-
-```ts
-// app/api/health/route.ts
-import { route } from '@/src/server/routes'
+const route = createRoute()
 
 export const GET = route({
-    handler: () => ({ ok: true }),
+    handler: (request, { params, locals }) => ({
+        method: request.method,
+        params,
+        locals,
+    }),
 })
 ```
 
-The default serializer converts ordinary return values to JSON and passes a
-native `Response` through unchanged.
-
-## User documentation versus maintainer documentation
-
-This directory contains end-user documentation. Architecture decisions,
-implementation tracking, compatibility evidence, and release operations are
-maintainer documentation in the repository's [development documentation
-index](../development/README.md).
-
-## Version and compatibility
-
-The current public baseline is `0.1.0`. It is verified against Next.js
-15.5.23 and 16.3.1, including Node and Edge Route Handlers. See the
-[compatibility matrix](../compatibility/next-matrix.md), [troubleshooting
-guide](./user-guide/troubleshooting.md), and [release notes](../release/v0.1.0.md)
-for the exact boundary.
+The exported value is a normal Next-compatible Route Handler. Factory scopes are
+explicit imports; there is no filesystem scan or `next.config.ts` registration.

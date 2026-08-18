@@ -1,161 +1,94 @@
 # Pipeline, errors, and responses
 
-[简体中文](../../zh-CN/user-guide/pipeline-and-errors.md) · **English**
+**English** · [简体中文](../../zh-CN/user-guide/pipeline-and-errors.md)
 
-## Execution order
-
-Every compiled route follows this order:
+## Order
 
 ```text
 Next params hydration
-  → Middleware
-  → Guard
-  → Input Resolver
-  → Input Pipe
-  → Interceptor
+  → Middleware.use()
+  → Guard.canActivate()
+  → Interceptor.intercept() enter
+  → declared argument resolution
+  → Pipe.transform()
   → Handler
-  → Response Serializer
+  → Interceptor exit
+  → response serialization
+
+ExceptionFilter.catch() handles failures from the chain.
 ```
-
-The order is intentional:
-
-- dynamic params are available to authorization before the body is read;
-- Guards can reject an unauthorized request without parsing input;
-- Input Pipes receive resolved input and can transform it;
-- Interceptors wrap the handler and can observe the final value;
-- the serializer handles ordinary return values after the handler completes.
 
 ## Middleware
 
-Middleware can update request-local state and must call `next()` to continue:
-
 ```ts
-import type { AnyRouteContext, RouteMiddleware } from 'next-route-kit'
-
-type State = { requestId: string }
-
-const requestIdMiddleware: RouteMiddleware<AnyRouteContext<State>> = {
+const requestId: RouteMiddleware<ApiContext> = {
     name: 'request-id',
-    async handle(context, next) {
-        context.state.requestId = crypto.randomUUID()
+    use(context, next) {
+        context.locals.requestId = crypto.randomUUID()
         return next()
     },
 }
 ```
 
-Middleware may short-circuit by returning a `Response`, but it should not call
-`next()` more than once. Calling it twice throws `DuplicateMiddlewareNextError`.
+Middleware wraps downstream execution and must call `next()`. Calling it twice
+throws `DuplicateMiddlewareNextError`.
 
-## Guards
-
-Guards run before `input` resolution:
+## Guard
 
 ```ts
-import { unauthorized, type AnyRouteContext, type Guard } from 'next-route-kit'
-
-const requireUser: Guard<AnyRouteContext> = {
+const requireUser: Guard<ApiContext> = {
     name: 'require-user',
-    canActivate({ request }) {
-        if (!request.headers.get('authorization')) {
+    canActivate(context) {
+        if (!context.request.headers.get('authorization')) {
             throw unauthorized()
         }
-
         return true
     },
 }
 ```
 
-Returning `false` produces the default `403 FORBIDDEN` error. Throw
-`unauthorized()` for a missing identity (`401`) and `forbidden()` for an
-identity that lacks permission (`403`). A Guard may also return a native
-`Response` to short-circuit with a custom response.
+A Guard can return `false`, a native `Response`, or throw `HttpError`.
+It runs before body/query resolution.
 
-Guards can read hydrated `context.params`, `request`, and request-local state.
-They should not expect `context.input` to be resolved yet.
-
-## Input Pipes
-
-An Input Pipe receives the current input, source metadata, and context:
+## Interceptor
 
 ```ts
-const trimName = {
-    name: 'trim-name',
-    transform(value: { name: string }) {
-        return { name: value.name.trim() }
-    },
-}
-```
-
-Pipes run in registration order. Each Pipe receives the previous Pipe's output.
-Use an optional package such as `@next-route-kit/zod` for schema validation.
-
-## Interceptors
-
-Interceptors wrap later stages and should normally await and return `next()`:
-
-```ts
-const timing = {
-    name: 'timing',
+const envelope: Interceptor<ApiContext> = {
+    name: 'envelope',
     async intercept(context, next) {
-        const startedAt = Date.now()
-        const result = await next()
-        console.info(context.meta.pathname, Date.now() - startedAt)
-        return result
-    },
-}
-```
+        const value = await next()
 
-When several Interceptors are registered, they enter in registration order and
-unwind in reverse order.
-
-## Error Mappers
-
-An Error Mapper returns a `Response` for errors it owns and `undefined` for all
-others:
-
-```ts
-const applicationErrors = {
-    name: 'application-errors',
-    map(error: unknown) {
-        if (error instanceof ApplicationError) {
-            return Response.json({ code: error.code, message: error.message }, { status: error.status })
+        if (value instanceof Response) {
+            return value
         }
 
-        return undefined
+        return { data: value, requestId: context.locals.requestId }
     },
 }
 ```
 
-The lookup order is:
+Code before `next()` is the enter phase; code after `await next()` is the
+exit phase. If the downstream handler returns a native `Response`, preserve it
+so its status, headers, and body remain unchanged.
 
-```text
-Route → Scope → Global → built-in default mapper
-```
-
-The default mapper handles `HttpError` and malformed JSON. Unexpected errors
-are rethrown to Next.js instead of exposing internal error details through the
-library.
-
-## Response serialization
-
-The default serializer behaves as follows:
-
-| Handler result        | Behavior                        |
-| --------------------- | ------------------------------- |
-| `Response`            | Returned unchanged.             |
-| JSON-compatible value | Converted with `Response.json`. |
-| `undefined`           | Rejected with a `TypeError`.    |
-| Stream, Blob, or File | Return an explicit `Response`.  |
-
-Use `jsonResponse({ transform, status, headers })` to define a shared response
-shape:
+## ExceptionFilter
 
 ```ts
-const route = createRoute({
-    response: jsonResponse({
-        transform: (data) => ({ code: 0, data }),
-    }),
-})
+const filter: ExceptionFilter<ApiContext> = {
+    name: 'api-errors',
+    catch(error, context) {
+        if (!(error instanceof HttpError)) return undefined
+        return Response.json({ code: error.code, message: error.message, requestId: context.locals.requestId }, { status: error.status })
+    },
+}
 ```
 
-An explicit Response returned by a handler is never wrapped a second time.
+Filters run from the route-local scope outward. Returning `undefined` passes
+the error to the next filter. The default filter handles built-in `HttpError`
+and malformed JSON.
+
+## Responses
+
+Plain values use `jsonResponse()`. A native `Response` passes through
+unchanged, so streams, files, redirects, and explicit `204` responses stay
+native.

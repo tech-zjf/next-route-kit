@@ -6,10 +6,10 @@ compatibility. The fixtures live under `apps/` and consume the local
 
 ## Current matrix
 
-| Fixture               | Locked Next.js version | Node route | Edge route | Async params | Real auth/order chain |
-| --------------------- | ---------------------: | :--------: | :--------: | :----------: | :-------------------: |
-| `apps/next15-fixture` |                15.5.23 |    pass    |    pass    |     pass     |         pass          |
-| `apps/next16-fixture` |                 16.3.1 |    pass    |    pass    |     pass     |         pass          |
+| Fixture               | Locked Next.js version | Node route | Edge route | Async params | Auth/resource chain |
+| --------------------- | ---------------------: | :--------: | :--------: | :----------: | :-----------------: |
+| `apps/next15-fixture` |                15.5.23 |    pass    |    pass    |     pass     |        pass         |
+| `apps/next16-fixture` |                 16.3.1 |    pass    |    pass    |     pass     |        pass         |
 
 Each fixture contains:
 
@@ -17,12 +17,12 @@ Each fixture contains:
 - `/api/edge` with `runtime = 'edge'`;
 - `/api/params/[id]` with Promise-based dynamic params;
 - `POST /api/echo` with `jsonBody()`;
-- `POST /api/accounts/[accountId]/orders` with a shared request-ID Middleware,
+- `POST /api/tenants/[tenantId]/resources` with a shared request-ID Middleware,
   authentication Guard, input validation Pipe, response Interceptor, and
-  Error Mapper;
+  ExceptionFilter;
 - query input on the Node and Edge routes.
 
-The order route is deliberately a user-shaped integration scenario rather than
+The resource route is deliberately a user-shaped integration scenario rather than
 a synthetic `createRoute()` smoke test. It verifies that a request can be
 authenticated before a malformed body is read, that dynamic params and JSON
 input reach the Handler as one typed object, that successful responses share an
@@ -65,22 +65,22 @@ The smoke test routes can be exercised after starting a fixture:
 pnpm --filter @next-route-kit/fixture-next15 exec next start -p 3115
 curl http://127.0.0.1:3115/api/node?mode=test
 curl http://127.0.0.1:3115/api/edge?mode=test
-curl http://127.0.0.1:3115/api/params/42
+curl http://127.0.0.1:3115/api/params/sample-id
 curl -X POST http://127.0.0.1:3115/api/echo \
     -H 'content-type: application/json' \
     --data '{"message":"hello"}'
-curl -X POST 'http://127.0.0.1:3115/api/accounts/acct-7/orders?preview=true' \
+curl -X POST 'http://127.0.0.1:3115/api/tenants/tenant-demo/resources?preview=true' \
     -H 'authorization: Bearer fixture-token' \
     -H 'content-type: application/json' \
-    -H 'x-request-id: manual-order' \
-    --data '{"sku":"sku-42","quantity":2}'
+    -H 'x-request-id: manual-resource' \
+    --data '{"label":"sample","size":2}'
 ```
 
 Replace the filter and port with `fixture-next16` and `3116` for the Next.js 16
 fixture.
 
 `pnpm verify:next:prod` builds both fixtures, starts them with `next start`, and
-checks the Node, Edge, params, echo, and authenticated order routes. The
+checks the Node, Edge, params, echo, and authenticated resource routes. The
 development command starts both fixtures with `next dev --turbopack` and checks
 the same user-shaped route set. Production and development servers are
 intentionally verified as separate compatibility signals.

@@ -1,4 +1,47 @@
-import { HttpError, type AnyRouteContext, type ErrorMapper } from '@next-route-kit/core'
+import { HttpError, type AnyRouteContext, type ExceptionFilter } from '@next-route-kit/core'
+
+/** An application-owned response code that is stable for clients to branch on. */
+export interface ResponseCodeDefinition {
+    readonly code: string
+    readonly msg: string
+    /** Optional transport status; business code and HTTP status remain separate. */
+    readonly status?: number
+}
+
+export interface ApiExceptionOptions {
+    readonly status?: number
+    readonly message?: string
+    readonly data?: Readonly<Record<string, unknown>>
+    readonly cause?: unknown
+}
+
+/**
+ * Application error for a stable API code.
+ *
+ * Services can throw this without constructing a Response. The configured
+ * API response plugin converts it into the application's `{ code, msg, data }`
+ * contract at the Route boundary.
+ */
+export class ApiException extends HttpError {
+    readonly responseCode: ResponseCodeDefinition
+    readonly data: Readonly<Record<string, unknown>>
+
+    constructor(responseCode: ResponseCodeDefinition, options: ApiExceptionOptions = {}) {
+        const data = Object.freeze({ ...(options.data ?? {}) })
+
+        super({
+            status: options.status ?? responseCode.status ?? 400,
+            code: responseCode.code,
+            message: options.message ?? responseCode.msg,
+            details: data,
+            cause: options.cause,
+        })
+
+        this.name = 'ApiException'
+        this.responseCode = responseCode
+        this.data = data
+    }
+}
 
 /** Raised when a route explicitly requests JSON but the body is malformed. */
 export class InvalidJsonBodyError extends HttpError {
@@ -14,10 +57,10 @@ export class InvalidJsonBodyError extends HttpError {
 }
 
 /** Maps framework-known HTTP/input errors without exposing unexpected internals. */
-export class DefaultErrorMapper<TContext extends AnyRouteContext = AnyRouteContext> implements ErrorMapper<TContext> {
-    readonly name = 'default-error-mapper'
+export class DefaultExceptionFilter<TContext extends AnyRouteContext = AnyRouteContext> implements ExceptionFilter<TContext> {
+    readonly name = 'default-exception-filter'
 
-    map(error: unknown, _context: TContext): Response | undefined {
+    catch(error: unknown, _context: TContext): Response | undefined {
         if (!(error instanceof HttpError)) {
             return undefined
         }
@@ -33,6 +76,6 @@ export class DefaultErrorMapper<TContext extends AnyRouteContext = AnyRouteConte
     }
 }
 
-export function defaultErrorMapper<TContext extends AnyRouteContext = AnyRouteContext>(): DefaultErrorMapper<TContext> {
-    return new DefaultErrorMapper<TContext>()
+export function defaultExceptionFilter<TContext extends AnyRouteContext = AnyRouteContext>(): DefaultExceptionFilter<TContext> {
+    return new DefaultExceptionFilter<TContext>()
 }

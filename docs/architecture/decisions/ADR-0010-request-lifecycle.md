@@ -1,4 +1,4 @@
-# ADR-0010: Use an explicit Nest-style request lifecycle
+# ADR-0010: Use an explicit request lifecycle
 
 ## Status
 
@@ -11,8 +11,8 @@ middleware and guards. That made malformed request bodies win over authorization
 and prevented middleware from preparing request-local state used by input
 resolvers.
 
-The package should preserve the familiar separation of concerns requested by
-Nest-style applications while keeping the App Router Route Handler contract.
+The package should preserve a familiar separation of concerns while keeping the
+App Router Route Handler contract.
 
 ## Decision
 
@@ -23,15 +23,17 @@ Middleware
   ↓
 Guard
   ↓
+Interceptor (enter)
+  ↓
 Input Resolver
   ↓
-Input Pipe
-  ↓
-Interceptor (before)
+Pipe
   ↓
 Handler
   ↓
-Interceptor (after)
+Interceptor (exit)
+  ↓
+Middleware (exit)
   ↓
 Response Serializer
 ```
@@ -39,10 +41,10 @@ Response Serializer
 Middleware and guards run before route input resolution. A denied guard never
 reads or parses the request body. The Next adapter hydrates `context.params`
 before middleware as framework metadata; this does not read request input. Input
-resolvers run once per request, input pipes transform their result, and
-interceptors wrap the handler result.
+resolvers run once per request, pipes transform each declared argument, and
+interceptors wrap both input preparation and the handler result.
 
-The Next adapter appends a default Error Mapper after user mappers. It maps
+The Next adapter appends a default ExceptionFilter after user filters. It maps
 `HttpError` and malformed JSON into safe JSON responses; unknown errors are not
 serialized with their internal message and remain available to Next.js's own
 error boundary.

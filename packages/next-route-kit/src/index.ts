@@ -1,10 +1,13 @@
 export { createRoute, Factory, jsonResponse } from './factory.js'
-export { defaultErrorMapper, DefaultErrorMapper, InvalidJsonBodyError } from './errors.js'
-export { InputSource, body, defineInputSource, headers, jsonBody, params, query, textBody } from './input.js'
-export type { InputSourceResolver, QueryInput, ResolvedRouteInput, RouteInputDefinition, RouteInputSourceMap } from './input.js'
+export { defaultExceptionFilter, ApiException, DefaultExceptionFilter, InvalidJsonBodyError } from './errors.js'
+export { ApiExceptionFilter, ApiResponseInterceptor, ApiResponsePlugin, apiResponsePlugin } from './api-response.js'
+export { InputSource, body, defineInputSource, jsonBody, query, textBody } from './input.js'
+export type { InputSourceResolver, QueryInput, RouteInputDefinition, RouteInputLocation } from './input.js'
+export type { ApiExceptionOptions, ResponseCodeDefinition } from './errors.js'
+export type { ApiResponseData, ApiResponseEnvelope, ApiResponsePluginOptions } from './api-response.js'
 export type {
     AnyRouteContext,
-    DefaultRouteState,
+    DefaultRouteLocals,
     JsonResponseOptions,
     NextRouteHandler,
     NextRouteHandlerContext,
@@ -12,6 +15,8 @@ export type {
     PublicRouteConfig,
     RouteFactory,
     RouteFactoryConfig,
+    RouteHandler,
+    RouteHandlerContext,
     RouteInputContext,
     RouteInputResolver,
     RouteOptions,
@@ -29,16 +34,16 @@ export {
 } from '@next-route-kit/core'
 export type {
     AnyRouteContext as CoreAnyRouteContext,
-    ErrorMapper,
+    ArgumentMetadata,
+    ExceptionFilter,
     Guard,
-    InputMetadata,
-    InputPipe,
     Interceptor,
     MaybePromise,
+    Pipe,
     ResponseSerializer,
     RouteConfig,
     RouteContext,
-    RouteHandler,
+    RouteHandler as CoreRouteHandler,
     RouteMeta,
     RouteMiddleware,
     RouteParams,

@@ -14,7 +14,7 @@ that is easy to miss during review.
 
 `Factory.extend()` only appends child contributions. It has no `disable`,
 `remove`, or path-based override operation in the 0.1.0 public API. Inherited
-Middleware, Guards, Input Pipes, Interceptors, and Error Mappers remain active
+Middleware, Guards, Pipes, Interceptors, and Exception Filters remain active
 for every child route.
 
 When a route needs a different policy, the application creates a separate

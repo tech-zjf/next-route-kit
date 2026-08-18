@@ -1,4 +1,4 @@
-import type { AnyRouteContext, ErrorMapper, InputMetadata, InputPipe } from '@next-route-kit/core'
+import type { AnyRouteContext, ArgumentMetadata, ExceptionFilter, Pipe } from '@next-route-kit/core'
 
 export interface ZodSafeParseSuccess<TOutput> {
     readonly success: true
@@ -32,9 +32,9 @@ export interface ZodValidationIssue {
 export class ZodValidationError extends Error {
     readonly issues: readonly ZodValidationIssue[]
     readonly input: unknown
-    readonly metadata: InputMetadata
+    readonly metadata: ArgumentMetadata
 
-    constructor(error: unknown, input: unknown, metadata: InputMetadata) {
+    constructor(error: unknown, input: unknown, metadata: ArgumentMetadata) {
         super('Input validation failed', { cause: error })
         this.name = 'ZodValidationError'
         this.issues = normalizeIssues(error)
@@ -45,20 +45,28 @@ export class ZodValidationError extends Error {
 
 export interface ZodPipeOptions {
     readonly name?: string
+    /** Limit this pipe to one resolved argument, for example body or query. */
+    readonly appliesTo?: ArgumentMetadata['type']
 }
 
-/** An Input Pipe that validates and transforms the resolved route input with a Zod schema. */
-export class ZodInputPipe<TSchema extends ZodSchemaLike = ZodSchemaLike> implements InputPipe<unknown, ZodOutput<TSchema>, AnyRouteContext> {
+/** A Pipe that validates one resolved route argument with a Zod schema. */
+export class ZodPipe<TSchema extends ZodSchemaLike = ZodSchemaLike> implements Pipe<unknown, ZodOutput<TSchema>, AnyRouteContext> {
     readonly name: string
+    private readonly appliesTo: ArgumentMetadata['type'] | undefined
 
     constructor(
         readonly schema: TSchema,
         options: ZodPipeOptions = {},
     ) {
         this.name = options.name ?? 'zod-validation'
+        this.appliesTo = options.appliesTo
     }
 
-    async transform(value: unknown, metadata: InputMetadata): Promise<ZodOutput<TSchema>> {
+    async transform(value: unknown, metadata: ArgumentMetadata): Promise<ZodOutput<TSchema>> {
+        if (this.appliesTo !== undefined && metadata.type !== this.appliesTo) {
+            return value as ZodOutput<TSchema>
+        }
+
         const result = await this.schema.safeParseAsync(value)
 
         if (result.success) {
@@ -69,11 +77,11 @@ export class ZodInputPipe<TSchema extends ZodSchemaLike = ZodSchemaLike> impleme
     }
 }
 
-export function zodPipe<TSchema extends ZodSchemaLike>(schema: TSchema, options?: ZodPipeOptions): ZodInputPipe<TSchema> {
-    return new ZodInputPipe(schema, options)
+export function zodPipe<TSchema extends ZodSchemaLike>(schema: TSchema, options?: ZodPipeOptions): ZodPipe<TSchema> {
+    return new ZodPipe(schema, options)
 }
 
-export interface ZodErrorMapperOptions {
+export interface ZodExceptionFilterOptions {
     readonly name?: string
     readonly status?: number
     readonly code?: string
@@ -82,22 +90,22 @@ export interface ZodErrorMapperOptions {
 }
 
 /** Maps ZodValidationError into a stable JSON error response. */
-export class ZodErrorMapper<TContext extends AnyRouteContext = AnyRouteContext> implements ErrorMapper<TContext> {
+export class ZodExceptionFilter<TContext extends AnyRouteContext = AnyRouteContext> implements ExceptionFilter<TContext> {
     readonly name: string
     private readonly status: number
     private readonly code: string
     private readonly message: string
     private readonly headers: HeadersInit | undefined
 
-    constructor(options: ZodErrorMapperOptions = {}) {
-        this.name = options.name ?? 'zod-error-mapper'
+    constructor(options: ZodExceptionFilterOptions = {}) {
+        this.name = options.name ?? 'zod-exception-filter'
         this.status = options.status ?? 400
         this.code = options.code ?? 'VALIDATION_ERROR'
         this.message = options.message ?? 'Input validation failed'
         this.headers = options.headers
     }
 
-    map(error: unknown, _context: TContext): Response | undefined {
+    catch(error: unknown, _context: TContext): Response | undefined {
         if (!(error instanceof ZodValidationError)) {
             return undefined
         }
@@ -119,8 +127,8 @@ export class ZodErrorMapper<TContext extends AnyRouteContext = AnyRouteContext> 
     }
 }
 
-export function zodErrorMapper<TContext extends AnyRouteContext = AnyRouteContext>(options?: ZodErrorMapperOptions): ZodErrorMapper<TContext> {
-    return new ZodErrorMapper(options)
+export function zodExceptionFilter<TContext extends AnyRouteContext = AnyRouteContext>(options?: ZodExceptionFilterOptions): ZodExceptionFilter<TContext> {
+    return new ZodExceptionFilter(options)
 }
 
 function normalizeIssues(error: unknown): readonly ZodValidationIssue[] {

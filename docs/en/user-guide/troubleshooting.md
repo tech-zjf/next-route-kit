@@ -1,78 +1,45 @@
 # Troubleshooting
 
-[简体中文](../../zh-CN/user-guide/troubleshooting.md) · **English**
+**English** · [简体中文](../../zh-CN/user-guide/troubleshooting.md)
 
-## Do I need to edit `next.config.ts`?
+## Do I need next.config.ts?
 
-No. Import an application-owned Factory from each `app/**/route.ts` file. The
-package intentionally does not scan files or inject runtime components through
-Next configuration.
+No. Import an application-owned Factory from each Route Handler.
 
-## Why did a Guard not receive `input`?
+## Why is body missing from context?
 
-That is intentional. The order is Middleware → Guard → Input Resolver. Guards
-can authorize from `request`, hydrated `params`, and `state` without consuming a
-request body. Move work that requires parsed input into an Input Pipe or the
-handler.
+`body` exists only when the route declares a body resolver. Otherwise call
+`await request.json()` or `await request.text()`.
 
-## Why did a JSON request return `400 INVALID_JSON`?
+## Why does a Guard not see body/query?
 
-`jsonBody()` and `readBody()` parse the body as JSON. Check the request's body
-and `content-type` handling. If the endpoint accepts text instead, use
-`textBody()`.
+Guards intentionally run before declared argument resolution so unauthorized
+requests do not consume the body.
 
-## Why is a repeated query value an array?
+## Why does JSON return 400 INVALID_JSON?
 
-`query()` preserves repeated URL keys. `?tag=a&tag=b` becomes
-`{ tag: ['a', 'b'] }`; a key used once remains a string. Validate or normalize
-that shape in an Input Pipe.
+`jsonBody()` parses JSON. Check the payload or use `textBody()` and the native
+request API for non-JSON content.
 
-## Why did my handler result not get the expected wrapper?
+## Why are repeated query values arrays?
 
-The default serializer only converts a value to JSON. Configure
-`jsonResponse({ transform })` on the Factory or a scope for a shared envelope.
-Return an explicit `Response` for downloads, streams, custom status codes, or
-content types.
+`query()` preserves repeated keys. `?tag=a&tag=b` becomes a read-only array.
+Use native URL parsing for another shape.
 
-## Why was `undefined` rejected?
+## Why is the response not wrapped?
 
-An undefined handler result has no unambiguous HTTP representation. Return a
-JSON value, `null`, or an explicit `Response` such as `new Response(null, {
-status: 204 })`.
+The default serializer only converts values to JSON. Use an Interceptor for an
+envelope and return a native `Response` for streams, files, redirects, or
+special statuses.
 
-## Why is a plugin rejected for Edge?
+## Why is an Edge plugin rejected?
 
-Set the Factory runtime and the Next route-module runtime to the same value:
+Align the route export and Factory declaration:
 
 ```ts
 export const runtime = 'edge'
 export const route = createRoute({ runtime: 'edge', plugins: [edgePlugin] })
 ```
 
-The diagnostic checks declared plugin metadata. It cannot make a Node-only
-import Edge-compatible; keep Node-only dependencies out of Edge entrypoints.
-
-## Why did `OPTIONS` bypass my pipeline?
-
-If a Route Handler does not explicitly export `OPTIONS`, Next.js may generate an
-automatic response. Export `OPTIONS = route({ ... })` when CORS or other
-cross-cutting behavior must pass through the Factory.
-
-## Can I disable a global Guard for one route?
-
-Not in `0.1.0`. Inherited components cannot be silently removed. Create a
-separate Factory with the intended security policy so the route's policy is
-visible at its import site.
-
-## Where should I report a compatibility issue?
-
-Reproduce it with the smallest Route Handler possible, include the Next.js
-version, Node.js or Edge runtime, route module exports, and the output of:
-
-```bash
-pnpm typecheck
-pnpm build
-pnpm verify:next:dev
-```
-
-Then open an issue in the [repository issue tracker](https://github.com/tech-zjf/next-route-kit/issues).
+The declaration is an early diagnostic, not a substitute for keeping Node-only
+imports out of an Edge entrypoint.

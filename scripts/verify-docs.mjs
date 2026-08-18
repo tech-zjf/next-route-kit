@@ -3,7 +3,7 @@ import { dirname, extname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const rootDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const roots = ['README.md', 'docs', 'packages']
+const roots = ['README.md', 'README.zh-CN.md', 'docs', 'packages']
 const markdownFiles = []
 
 for (const root of roots) {

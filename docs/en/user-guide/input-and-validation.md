@@ -1,146 +1,86 @@
-# Input sources and validation
+# Input and validation
 
-[简体中文](../../zh-CN/user-guide/input-and-validation.md) · **English**
+**English** · [简体中文](../../zh-CN/user-guide/input-and-validation.md)
 
-Input resolution is deliberately separate from validation. The main package
-knows how to obtain Web request data; Input Pipes or optional adapters decide
-whether the data is valid.
+Parsing is opt-in. Use a resolver only when a typed, shared value makes the
+route easier to read.
 
-## Built-in input sources
-
-```ts
-import { body, headers, jsonBody, params, query, textBody } from 'next-route-kit'
-```
-
-| Source          | Value                                                   | Notes                                        |
-| --------------- | ------------------------------------------------------- | -------------------------------------------- |
-| `jsonBody<T>()` | `Promise<T>`                                            | Parses JSON lazily. `body<T>()` is an alias. |
-| `textBody()`    | `Promise<string>`                                       | Reads the body as text.                      |
-| `query()`       | `Readonly<Record<string, string \| readonly string[]>>` | Repeated keys become readonly arrays.        |
-| `params<T>()`   | `T`                                                     | Reads the resolved dynamic route params.     |
-| `headers()`     | `Headers`                                               | Returns a copy of the request headers.       |
-
-## Compose an input object
+## Body
 
 ```ts
-const GET = route({
-    input: {
-        body: jsonBody<{ search: string }>(),
-        query: query(),
-        params: params<{ id: string }>(),
-        headers: headers(),
-        version: 'v1',
-    },
-    handler: ({ input }) => ({
-        id: input.params.id,
-        search: input.body.search,
-        page: input.query.page,
-        version: input.version,
-    }),
+export const POST = route({
+    body: jsonBody<CreateInput>(),
+    handler: async (_request, { body }) => service.create(body),
 })
 ```
 
-Source maps may mix Input Sources and literal values. The object declaration is
-shallow-snapshotted when the Route Handler is compiled, so mutating the source
-map later does not silently change the exported handler.
+Use `textBody()` for text. If raw access is clearer, omit `body` and call
+`request.text()` or `request.json()` yourself. Body parsing is lazy and
+cached; Guards run first. When `body` is declared, use the named `body` value in
+the handler because the underlying Request stream may already have been
+consumed.
 
-## Custom input sources
-
-Use `defineInputSource` when a source is reused by several routes:
+## Query
 
 ```ts
-import { defineInputSource } from 'next-route-kit'
-
-const tenantId = defineInputSource('tenant-id', 'headers', ({ request }) => {
-    const value = request.headers.get('x-tenant-id')
-
-    if (!value) {
-        throw new Error('Missing x-tenant-id')
-    }
-
-    return value
-})
-
-const route = createRoute()
+type ListQuery = { search?: string; page?: string }
 
 export const GET = route({
-    input: { tenantId },
-    handler: ({ input }) => ({ tenantId: input.tenantId }),
+    query: query<ListQuery>(),
+    handler: (_request, { query: values }) => service.list(values),
 })
 ```
 
-The resolver receives:
+Repeated keys become read-only arrays. For a one-off query, use
+`new URL(request.url).searchParams` instead.
+
+## Params and headers
 
 ```ts
-type RouteInputContext = {
-    request: Request
-    params: RouteParams
-    state: TState
-    readBody<T>(): Promise<T>
-    readText(): Promise<string>
-}
-```
-
-`readBody()` and `readText()` share the request's one-shot body stream. Repeated
-calls reuse the cached text or parsed JSON result. A Guard can reject a request
-before either method is called.
-
-## Resolver functions
-
-For one-off logic, use a resolver instead of defining a named source:
-
-```ts
-const route = createRoute()
-
-export const GET = route({
-    input: async ({ request, params, state }) => ({
-        url: request.url,
+export const GET = route<{ id: string }>({
+    handler: (request, { params }) => ({
         id: params.id,
-        userId: state.userId,
+        authorization: request.headers.get('authorization'),
     }),
-    handler: ({ input }) => input,
 })
 ```
 
-## Zod adapter
+Params and headers do not need helper declarations in normal routes. Read them
+from the named context and native request shown above.
 
-Install the optional adapter:
-
-```bash
-pnpm add @next-route-kit/zod zod
-```
-
-`zodPipe(schema)` runs after input resolution. It replaces the current input
-with Zod's parsed output, so transforms and async refinements are supported.
+## Custom sources
 
 ```ts
-import { z } from 'zod'
-import { createRoute, jsonBody, query } from 'next-route-kit'
-import { zodErrorMapper, zodPipe } from '@next-route-kit/zod'
-
-const bodySchema = z.object({ name: z.string().min(1) })
-const querySchema = z.object({ page: z.coerce.number().int().positive().default(1) })
-
-const route = createRoute({
-    inputPipes: [zodPipe(z.object({ body: bodySchema, query: querySchema }))],
-    errorMappers: [zodErrorMapper()],
+const tenantBody = defineInputSource('tenant-body', 'body', ({ readBody }) => {
+    return readBody<{ tenantId: string }>()
 })
 
 export const POST = route({
-    input: {
-        body: jsonBody<z.input<typeof bodySchema>>(),
-        query: query(),
-    },
-    handler: ({ input }) => ({
-        name: input.body.name,
-        page: input.query.page,
-    }),
+    body: tenantBody,
+    handler: (_request, { body }) => ({ tenantId: body.tenantId }),
 })
 ```
 
-The mapper returns status `400`, code `VALIDATION_ERROR`, and an `issues` array
-by default. Customize it with `{ status, code, message, headers, name }`.
+A custom source can be assigned to the route's `body` or `query` option when
+that source is reused and the named handler context is clearer. For one-off
+headers, use `request.headers` directly.
 
-Validation failures are mapped by the normal Error Mapper chain. Register the
-mapper on the global Factory, a scope, or one route depending on the desired
-boundary.
+## Pipes
+
+Pipes receive each declared argument separately:
+
+```ts
+const validateBody: Pipe = {
+    name: 'validate-body',
+    transform(value, metadata) {
+        if (metadata.type !== 'body') return value
+        return validate(value)
+    },
+}
+
+const route = createRoute({ pipes: [validateBody] })
+```
+
+Core stays validator-agnostic. The optional Zod adapter provides
+`zodPipe()` and `zodExceptionFilter()`. Use `appliesTo` when a scope has
+both body and query schemas.

@@ -14,7 +14,7 @@ describe('RoutePluginRegistry', () => {
                         middleware: [
                             {
                                 name: 'first-middleware',
-                                handle(_context, next) {
+                                use(_context, next) {
                                     return next()
                                 },
                             },
@@ -30,7 +30,7 @@ describe('RoutePluginRegistry', () => {
                         middleware: [
                             {
                                 name: 'second-middleware',
-                                handle(_context, next) {
+                                use(_context, next) {
                                     return next()
                                 },
                             },
@@ -156,5 +156,22 @@ describe('RoutePluginRegistry', () => {
         expect(() => registry.snapshot('edge')).toThrow(RuntimeIncompatiblePluginError)
         expect(() => registry.snapshot('edge')).toThrow('node-database')
         expect(() => registry.snapshot('nodejs')).not.toThrow()
+    })
+
+    it('exposes renamed plugin stages in the snapshot', () => {
+        const snapshot = new RoutePluginRegistry([
+            {
+                name: 'stages',
+                install() {
+                    return {
+                        pipes: [{ name: 'pipe', transform: (value) => value }],
+                        exceptionFilters: [{ name: 'filter', catch: () => undefined }],
+                    }
+                },
+            },
+        ]).snapshot()
+
+        expect(snapshot.pipes.map((item) => item.name)).toEqual(['pipe'])
+        expect(snapshot.exceptionFilters.map((item) => item.name)).toEqual(['filter'])
     })
 })

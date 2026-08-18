@@ -6,21 +6,22 @@ Accepted.
 
 ## Context
 
-The Core pipeline needs a stable `InputPipe` contract, but it should not choose
+The Core pipeline needs a stable `Pipe` contract, but it should not choose
 one schema library for every application. Importing Zod from Core would make
 the base package larger, couple its release surface to Zod, and make a future
 validator adapter harder to add. Validation errors also need a predictable
-mapping into the existing `ErrorMapper` stage.
+conversion into the existing `ExceptionFilter` stage.
 
 ## Decision
 
 Publish `@next-route-kit/zod` as an independent package with Zod as a peer
 dependency. The first adapter exposes:
 
-- `ZodInputPipe` / `zodPipe(schema)` for async validation and parsed-output
+- `ZodPipe` / `zodPipe(schema)` for async validation and parsed-output
   replacement;
 - `ZodValidationError` with normalized, immutable issues and input metadata;
-- `ZodErrorMapper` / `zodErrorMapper(options)` for configurable JSON responses.
+- `ZodExceptionFilter` / `zodExceptionFilter(options)` for configurable JSON
+  responses.
 
 The adapter depends only on `@next-route-kit/core` contracts. Core and
 `next-route-kit` do not import Zod. The adapter uses the async parse API so
@@ -38,8 +39,8 @@ Positive:
 
 Trade-off:
 
-- the parsed output of an `InputPipe` is a runtime pipeline transformation; the
-  route handler's static input type still comes from its `input` definition.
+- the parsed output of a `Pipe` is a runtime pipeline transformation; the route
+  handler's static input type still comes from its `body` or `query` definition.
   Applications should use `z.input`/`z.output` explicitly when a schema
   transforms a value.
 

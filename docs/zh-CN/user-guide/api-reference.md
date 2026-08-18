@@ -2,137 +2,77 @@
 
 [English](../../en/user-guide/api-reference.md) · **简体中文**
 
-本页说明应用开发者最常用的公开导出。最终类型契约以发布包生成的 TypeScript 声明为准。
-
-## `createRoute`
+## Factory
 
 ```ts
-createRoute<TState = Record<string, never>>(
-    config?: RouteFactoryConfig<TState>,
-): RouteFactory<TState>
+const route = createRoute<TLocals>(config?)
+const child = route.extend(config)
+const handler = route<TParams, TBody, TQuery, TResult>(options)
 ```
 
-`createRoute` 是可调用的 Root Factory。它接收配置对象，并返回一个可调用的 `route` Factory：
+`createRoute` 返回一个 class-backed、可调用的 `Factory`。结果可直接作为
+Next App Router 的方法导出。
+
+## Route 选项
 
 ```ts
-const route = createRoute({ response: jsonResponse() })
-const GET = route({ handler: () => ({ ok: true }) })
+type RouteOptions = {
+    runtime?: 'nodejs' | 'edge'
+    middleware?: RouteMiddleware[]
+    guards?: Guard[]
+    pipes?: Pipe[]
+    interceptors?: Interceptor[]
+    exceptionFilters?: ExceptionFilter[]
+    plugins?: RoutePlugin[]
+    use?: RoutePlugin[]
+    response?: ResponseSerializer
+    responseSerializer?: ResponseSerializer
+    body?: RouteInputDefinition<TBody>
+    query?: RouteInputDefinition<TQuery>
+    handler: (request: Request, context: RouteHandlerContext) => unknown
+}
 ```
 
-`TState` 泛型描述 request-local state 的类型。Middleware 或 Guard 可以写入它，后续阶段读取它：
+大多数接口只需要 `handler`。只有希望包自动解析并缓存值时，才增加
+`body` 或 `query`。
+
+没有动态 Params 时，`jsonBody<T>()` 和 `query<T>()` 可以直接推导类型，不需要
+Route 泛型。动态 Params 与带类型的 Body/Query 同时出现时，按
+`route<TParams, TBody, TQuery, TResult>` 的顺序显式提供泛型。
+
+## Handler Context
 
 ```ts
-type State = { requestId: string }
-const route = createRoute<State>({ middleware: [requestIdMiddleware] })
-```
-
-## `route(options)` 与 `Factory.create(options)`
-
-```ts
-route<TParams, TInput, TResult>(options: RouteOptions<TParams, TInput, TState, TResult>): NextRouteHandler<TParams>
-```
-
-同样的编译能力也可以通过 `factory.create(options)` 调用。Route Handler 文件推荐使用可调用形式。
-
-### Handler Context
-
-```ts
-type RouteContext<TParams, TInput, TState> = {
-    request: Request
+type RouteHandlerContext = {
     params: TParams
-    input: TInput
-    inputMetadata?: InputMetadata
-    state: TState
+    locals: TLocals
     meta: RouteMeta
+    body?: TBody
+    query?: TQuery
 }
 ```
 
-Handler 执行时 `params` 已经解析完成。`request` 是 Web API `Request`；`input` 是输入定义解析后的值；`state` 是 request-local state；`meta` 包含可选的 method、pathname 和 runtime 信息。
+声明对应 Route 选项后才会出现 `body`、`query`。Handler 的第一个参数始终
+是原生 `Request`。
 
-### Route 输入定义
+## 内置解析器
 
-`input` 支持以下形式：
+| 解析器                        | 结果                           |
+| ----------------------------- | ------------------------------ |
+| `jsonBody<T>()` / `body<T>()` | 延迟解析 JSON                  |
+| `textBody()`                  | 延迟读取文本                   |
+| `query<T>()`                  | Query Map，重复 Key 变成数组   |
+| `defineInputSource()`         | 可复用的 Body/Query 延迟解析器 |
 
-| 形式       | 示例                                                | 结果                                         |
-| ---------- | --------------------------------------------------- | -------------------------------------------- |
-| 直接值     | `input: { source: 'cache' }`                        | 该值直接进入 Pipe 和 Handler。               |
-| Resolver   | `input: ({ request }) => request.url`               | 在 Guard 后执行 resolver。                   |
-| 单个输入源 | `input: jsonBody<Body>()`                           | 解析一个输入值。                             |
-| Source Map | `input: { body: jsonBody<Body>(), query: query() }` | 每个输入源解析成一个字段，字面量字段会保留。 |
+Params 直接使用 `context.params`，Header、URL 和 Cookie 直接从原生
+`request` 上读取，不需要额外的 helper 声明。
 
-## `Factory.extend`
-
-```ts
-extend(config: RouteFactoryConfig<TState>): RouteFactory<TState>
-```
-
-返回不可变的子 Factory。数组按照合并规则追加；Error Mapper 按本地优先处理；本地 Serializer 会替换父级 Serializer。
-
-## 输入辅助函数
-
-| 导出                | 签名                         | 返回值                             |
-| ------------------- | ---------------------------- | ---------------------------------- |
-| `jsonBody`          | `jsonBody<T>()`              | 延迟解析的 `T` 类型 JSON Body。    |
-| `body`              | `body<T>()`                  | `jsonBody<T>()` 的别名。           |
-| `textBody`          | `textBody()`                 | 延迟读取的 `string` 类型 Body。    |
-| `query`             | `query()`                    | 字符串值对象；重复键变成只读数组。 |
-| `params`            | `params<TParams>()`          | 已解析的动态路由参数。             |
-| `headers`           | `headers()`                  | Request Headers 的副本。           |
-| `defineInputSource` | `(name, location, resolver)` | 自定义可复用 `InputSource`。       |
-
-输入源带有 `name` 和 `body`、`query`、`params`、`headers`、`custom` 之一的 metadata `location`，Input Pipe 可以读取该信息。
-
-## `jsonResponse`
-
-```ts
-jsonResponse<TContext = RouteContext>(options?: JsonResponseOptions<TContext>): ResponseSerializer
-```
-
-| 选项        | 类型                                          | 默认值 | 含义                                       |
-| ----------- | --------------------------------------------- | ------ | ------------------------------------------ |
-| `status`    | `number`                                      | `200`  | 普通序列化结果使用的 HTTP 状态码。         |
-| `headers`   | `HeadersInit`                                 | 无     | 额外响应 Header。                          |
-| `transform` | `(value, context) => value \| Promise<value>` | 原值   | 在 `Response.json` 前转换 Handler 返回值。 |
-
-Handler 返回 `Response` 时绕过 Serializer。不要返回 `undefined`；请返回 JSON 值或原生 `Response`。
-
-## 错误
-
-```ts
-new HttpError({
-    status: 422,
-    code: 'INVALID_USER',
-    message: 'User data is invalid',
-    details: { field: 'email' },
-})
-```
-
-便捷构造函数：
-
-```ts
-unauthorized() // 401, UNAUTHORIZED
-forbidden() // 403, FORBIDDEN
-```
-
-主包的默认 Mapper 会将 `HttpError` 序列化为：
-
-```json
-{
-    "code": "UNAUTHORIZED",
-    "message": "Authentication is required"
-}
-```
-
-`jsonBody()` 或 `readBody()` 解析失败时，会返回 `400 INVALID_JSON` 的 `InvalidJsonBodyError` 响应。
-
-## Pipeline 组件契约
-
-所有组件都需要稳定的 `name`，用于诊断和调试。
+## 组件契约
 
 ```ts
 type RouteMiddleware = {
     name: string
-    handle(context, next): value | Promise<value>
+    use(context, next): unknown | Promise<unknown>
 }
 
 type Guard = {
@@ -140,44 +80,44 @@ type Guard = {
     canActivate(context): boolean | Response | Promise<boolean | Response>
 }
 
-type InputPipe = {
+type Pipe = {
     name: string
-    transform(value, metadata, context): value | Promise<value>
+    transform(value, metadata, context): unknown | Promise<unknown>
 }
 
 type Interceptor = {
     name: string
-    intercept(context, next): Promise<value>
+    intercept(context, next): unknown | Promise<unknown>
 }
 
-type ErrorMapper = {
+type ExceptionFilter = {
     name: string
-    map(error, context): Response | undefined | Promise<Response | undefined>
+    catch(error, context): Response | undefined | Promise<Response | undefined>
 }
 ```
 
-## Runtime 与插件
+`ArgumentMetadata.type` 为 `body`、`query`、`params`、`headers` 或
+`custom`。Pipe 可以据此忽略不属于自己的参数。
+
+## 统一 API 响应契约
 
 ```ts
-type RouteRuntime = 'nodejs' | 'edge'
-type RuntimeSupport = 'nodejs' | 'edge' | 'both'
+const apiRoute = createRoute({
+    plugins: [
+        apiResponsePlugin({
+            success: ResponseCode.SUCCESS,
+            systemError: ResponseCode.INTERNAL_ERROR,
+        }),
+    ],
+})
 
-type RoutePlugin = {
-    name: string
-    runtime?: RuntimeSupport
-    install(): RoutePluginContribution
-}
+throw new ApiException(ResponseCode.RESOURCE_NOT_FOUND, {
+    data: { resourceId },
+})
 ```
 
-Factory 配置了 `runtime` 后，会检查插件声明的 Runtime。这只是提前诊断，不能替代 Next.js 的 Bundle 检查。
-
-`install()` 可以返回以下贡献属性：
-
-| 属性                 | 含义                                                                                    |
-| -------------------- | --------------------------------------------------------------------------------------- |
-| `middleware`         | 追加到当前作用域的 Middleware。                                                         |
-| `guards`             | 追加到当前作用域的 Guard。                                                              |
-| `inputPipes`         | 追加到当前作用域的 Input Pipe。                                                         |
-| `interceptors`       | 追加到当前作用域的 Interceptor。                                                        |
-| `errorMappers`       | 按正常本地优先规则追加 Error Mapper。                                                   |
-| `responseSerializer` | 一个 Serializer 贡献；同一作用域多个插件提供时抛出 `DuplicateResponseSerializerError`。 |
+`apiResponsePlugin()` 会贡献成功响应 Interceptor 和异常 Exception Filter，统一
+输出 `{ code, msg, data }`，并使用配置的 `systemError` 兜底未知异常；原生
+`Response` 仍然直接透传。`ResponseCodeDefinition` 包含 `code`、`msg` 和可选的 HTTP
+`status`；`ApiException` 支持可选的 `message`、`data`、`status`、`cause` 覆盖值。
+完整契约和迁移示例见[统一 API 响应指南](api-response.md)。

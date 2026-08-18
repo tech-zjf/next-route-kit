@@ -1,70 +1,49 @@
 import { describe, expect, it } from 'vitest'
-import { createRoute, Factory, headers, jsonBody, params, query, RuntimeIncompatiblePluginError, textBody } from '../src/index.js'
+import {
+    createRoute,
+    Factory,
+    HttpError,
+    jsonBody,
+    jsonResponse,
+    query,
+    RuntimeIncompatiblePluginError,
+    textBody,
+    type ArgumentMetadata,
+    type Pipe,
+    type RoutePlugin,
+} from '../src/index.js'
+
+type AppLocals = {
+    requestId: string
+    userId?: string
+}
+
+type ResourceParams = {
+    tenantId: string
+}
+
+type ResourceBody = {
+    label: string
+    size: number
+}
+
+type ResourceQuery = {
+    preview?: string
+}
+
+function nextParams<TParams>(params: TParams): { params: Promise<TParams> } {
+    return { params: Promise.resolve(params) }
+}
 
 describe('createRoute', () => {
-    it('exposes source metadata for composed input maps', async () => {
-        let receivedMetadata: unknown
-        const route = createRoute({
-            inputPipes: [
-                {
-                    name: 'metadata-observer',
-                    transform(value, metadata) {
-                        receivedMetadata = metadata
-                        return value
-                    },
-                },
-            ],
-        })
-        const POST = route({
-            input: {
-                payload: jsonBody<{ ok: boolean }>(),
-                filter: query(),
-                staticValue: 'fixed',
-            },
-            handler: ({ input }) => input,
-        })
-
-        const response = await POST(
-            new Request('https://example.test/input?filter=active', {
-                method: 'POST',
-                body: JSON.stringify({ ok: true }),
-            }),
-        )
-        const metadata = receivedMetadata as {
-            location: string
-            name?: string
-            fields?: Record<string, { location: string; name?: string }>
-        }
-
-        expect(metadata).toEqual({
-            location: 'custom',
-            name: 'route-input',
-            fields: {
-                payload: { location: 'body', name: 'json-body' },
-                filter: { location: 'query', name: 'query' },
-                staticValue: { location: 'custom', name: 'staticValue' },
-            },
-        })
-        expect(Object.isFrozen(metadata)).toBe(true)
-        expect(Object.isFrozen(metadata.fields)).toBe(true)
-        expect(await response.json()).toEqual({
-            payload: { ok: true },
-            filter: { filter: 'active' },
-            staticValue: 'fixed',
-        })
-    })
-
-    it('creates a native-compatible handler with global configuration', async () => {
-        const events: string[] = []
-        const route = createRoute({
+    it('keeps a detail route close to native Next and passes Request first', async () => {
+        const route = createRoute<AppLocals>({
             middleware: [
                 {
-                    name: 'global-middleware',
-                    async handle(_context, next) {
-                        events.push('before')
-                        const result = await next()
-                        events.push('after')
-                        return result
+                    name: 'request-id',
+                    use(context, next) {
+                        context.locals.requestId = context.request.headers.get('x-request-id') ?? 'generated'
+                        return next()
                     },
                 },
             ],
@@ -72,34 +51,140 @@ describe('createRoute', () => {
 
         expect(route).toBeInstanceOf(Factory)
         expect(Object.isFrozen(route)).toBe(true)
-        expect(Reflect.set(route, 'unexpected', true)).toBe(false)
-        expect(route.config.middleware).toHaveLength(1)
 
-        const GET = route({
-            handler: ({ params }) => {
-                events.push(params.id as string)
-                return { ok: true }
-            },
+        const GET = route<{ id: string }>({
+            handler: async (request, { params, locals }) => ({
+                method: request.method,
+                id: params.id,
+                requestId: locals.requestId,
+            }),
         })
 
-        const response = await GET(new Request('https://example.test/users/42'), {
-            params: Promise.resolve({ id: '42' }),
-        })
+        const response = await GET(
+            new Request('https://example.test/articles/sample-id', { headers: { 'x-request-id': 'request-sample' } }),
+            nextParams({ id: 'sample-id' }),
+        )
 
         expect(response.status).toBe(200)
-        expect(await response.json()).toEqual({ ok: true })
-        expect(events).toEqual(['before', '42', 'after'])
+        expect(await response.json()).toEqual({
+            method: 'GET',
+            id: 'sample-id',
+            requestId: 'request-sample',
+        })
     })
 
-    it('runs middleware and guards before input resolution, then pipes before interceptors', async () => {
-        const events: string[] = []
+    it('resolves only declared body and query values into the handler context', async () => {
+        const route = createRoute<AppLocals>({
+            guards: [
+                {
+                    name: 'authentication',
+                    canActivate(context) {
+                        context.locals.userId = 'viewer-demo'
+                        return true
+                    },
+                },
+            ],
+        })
+
+        const POST = route<ResourceParams, ResourceBody, ResourceQuery>({
+            body: jsonBody<ResourceBody>(),
+            query: query<ResourceQuery>(),
+            handler: async (request, { params, body, query, locals }) => ({
+                tenantId: params.tenantId,
+                userId: locals.userId,
+                label: body.label,
+                size: body.size,
+                preview: query.preview === 'true',
+                contentType: request.headers.get('content-type'),
+            }),
+        })
+
+        const response = await POST(
+            new Request('https://example.test/tenants/tenant-demo/resources?preview=true', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ label: 'sample', size: 2 }),
+            }),
+            nextParams({ tenantId: 'tenant-demo' }),
+        )
+
+        expect(await response.json()).toEqual({
+            tenantId: 'tenant-demo',
+            userId: 'viewer-demo',
+            label: 'sample',
+            size: 2,
+            preview: true,
+            contentType: 'application/json',
+        })
+    })
+
+    it('keeps the request body unread when a guard rejects the request', async () => {
+        let bodyRead = false
         const route = createRoute({
+            guards: [
+                {
+                    name: 'reject',
+                    canActivate: () => {
+                        return new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status: 401, headers: { 'content-type': 'application/json' } })
+                    },
+                },
+            ],
+        })
+
+        const POST = route({
+            body: async ({ readBody }) => {
+                bodyRead = true
+                return readBody()
+            },
+            handler: () => ({ shouldNotRun: true }),
+        })
+
+        const response = await POST(
+            new Request('https://example.test/resources', {
+                method: 'POST',
+                body: 'not-json',
+            }),
+        )
+
+        expect(response.status).toBe(401)
+        expect(bodyRead).toBe(false)
+    })
+
+    it('does not run global pipes when a route declares no input', async () => {
+        let pipeRuns = 0
+        const route = createRoute({
+            pipes: [
+                {
+                    name: 'input-only-pipe',
+                    transform(value) {
+                        pipeRuns += 1
+                        return value
+                    },
+                },
+            ],
+        })
+
+        const GET = route({
+            handler: () => ({ ok: true }),
+        })
+
+        const response = await GET(new Request('https://example.test/health'))
+
+        expect(pipeRuns).toBe(0)
+        expect(await response.json()).toEqual({ ok: true })
+    })
+
+    it('runs middleware, guard, interceptor, body pipe, handler, and unwind stages in order', async () => {
+        const events: string[] = []
+        const route = createRoute<AppLocals>({
             middleware: [
                 {
                     name: 'middleware',
-                    handle(_context, next) {
-                        events.push('middleware')
-                        return next()
+                    async use(_context, next) {
+                        events.push('middleware:before')
+                        const result = await next()
+                        events.push('middleware:after')
+                        return result
                     },
                 },
             ],
@@ -109,15 +194,6 @@ describe('createRoute', () => {
                     canActivate() {
                         events.push('guard')
                         return true
-                    },
-                },
-            ],
-            inputPipes: [
-                {
-                    name: 'pipe',
-                    transform(value) {
-                        events.push('pipe')
-                        return value
                     },
                 },
             ],
@@ -133,108 +209,78 @@ describe('createRoute', () => {
                 },
             ],
         })
-        const GET = route({
-            input: () => {
-                events.push('input')
-                return { ok: true }
-            },
-            handler: () => {
+
+        const POST = route({
+            body: jsonBody<ResourceBody>(),
+            pipes: [
+                {
+                    name: 'body-pipe',
+                    transform(value, metadata) {
+                        events.push('pipe:' + metadata.type)
+                        const body = value as ResourceBody
+                        return { ...body, size: body.size + 1 }
+                    },
+                },
+            ],
+            handler: (_request, { body }) => {
                 events.push('handler')
-                return { ok: true }
+                return body
             },
-        })
-
-        const response = await GET(new Request('https://example.test/lifecycle'))
-
-        expect(events).toEqual(['middleware', 'guard', 'input', 'pipe', 'interceptor:before', 'handler', 'interceptor:after'])
-        expect(await response.json()).toEqual({ ok: true })
-    })
-
-    it('does not resolve input when a guard denies the request', async () => {
-        let inputCalls = 0
-        const POST = createRoute({
-            guards: [
-                {
-                    name: 'deny',
-                    canActivate: () => false,
-                },
-            ],
-        })({
-            input: () => {
-                inputCalls += 1
-                return { ok: true }
-            },
-            handler: () => ({ ok: true }),
-        })
-
-        const response = await POST(new Request('https://example.test/guarded', { method: 'POST' }))
-
-        expect(response.status).toBe(403)
-        expect(inputCalls).toBe(0)
-    })
-
-    it('hydrates Next params before middleware and guards', async () => {
-        const events: string[] = []
-        const GET = createRoute({
-            middleware: [
-                {
-                    name: 'params-middleware',
-                    handle(context, next) {
-                        events.push(`middleware:${context.params.id}`)
-                        return next()
-                    },
-                },
-            ],
-            guards: [
-                {
-                    name: 'params-guard',
-                    canActivate(context) {
-                        events.push(`guard:${context.params.id}`)
-                        return true
-                    },
-                },
-            ],
-        })({
-            input: ({ params: routeParams }) => {
-                events.push(`input:${routeParams.id}`)
-                return routeParams
-            },
-            handler: ({ input }) => ({ id: input.id }),
-        })
-
-        const response = await GET(new Request('https://example.test/users/42'), {
-            params: Promise.resolve({ id: '42' }),
-        })
-
-        expect(events).toEqual(['middleware:42', 'guard:42', 'input:42'])
-        expect(await response.json()).toEqual({ id: '42' })
-    })
-
-    it('supports optional catch-all params in input sources', async () => {
-        const GET = createRoute()({
-            input: params<{ slug: string[] | undefined }>(),
-            handler: ({ input }) => ({ hasSlug: input.slug !== undefined }),
-        })
-
-        const response = await GET(new Request('https://example.test/docs'), {
-            params: Promise.resolve({ slug: undefined }),
-        })
-
-        expect(await response.json()).toEqual({ hasSlug: false })
-    })
-
-    it('maps malformed JSON bodies to a bad request response by default', async () => {
-        const POST = createRoute()({
-            input: jsonBody(),
-            handler: () => ({ ok: true }),
         })
 
         const response = await POST(
-            new Request('https://example.test/malformed-json', {
+            new Request('https://example.test/resources', {
                 method: 'POST',
-                body: 'not-json',
+                body: JSON.stringify({ label: 'sample', size: 2 }),
             }),
         )
+
+        expect(events).toEqual(['middleware:before', 'guard', 'interceptor:before', 'pipe:body', 'handler', 'interceptor:after', 'middleware:after'])
+        expect(await response.json()).toEqual({ label: 'sample', size: 3 })
+    })
+
+    it('uses raw URL search params when query parsing is not needed', async () => {
+        const GET = createRoute()({
+            handler: (request, { params }) => ({
+                id: params.id,
+                search: new URL(request.url).searchParams.get('search'),
+            }),
+        })
+
+        const response = await GET(new Request('https://example.test/articles/sample-id?search=route-kit'), nextParams({ id: 'sample-id' }))
+
+        expect(await response.json()).toEqual({ id: 'sample-id', search: 'route-kit' })
+    })
+
+    it('parses repeated query keys only when query is declared', async () => {
+        const GET = createRoute()({
+            query: query(),
+            handler: (_request, { query: values }) => values,
+        })
+
+        const response = await GET(new Request('https://example.test/articles?tag=a&tag=b'))
+
+        expect(await response.json()).toEqual({ tag: ['a', 'b'] })
+    })
+
+    it('supports textBody without changing the native handler signature', async () => {
+        const POST = createRoute()({
+            body: textBody(),
+            handler: (_request, { body }) => ({ value: body }),
+        })
+
+        const response = await POST(new Request('https://example.test/webhook', { method: 'POST', body: 'signed-payload' }))
+
+        expect(await response.json()).toEqual({ value: 'signed-payload' })
+    })
+
+    it('maps malformed JSON through the default exception filter', async () => {
+        const POST = createRoute()({
+            body: jsonBody<{ ok: boolean }>(),
+            handler: () => ({ ok: true }),
+        })
+
+        const response = await POST(new Request('https://example.test/json', { method: 'POST', body: 'invalid' }))
 
         expect(response.status).toBe(400)
         expect(await response.json()).toEqual({
@@ -243,123 +289,23 @@ describe('createRoute', () => {
         })
     })
 
-    it('fails early with a clear diagnostic for an incompatible global plugin', () => {
-        expect(() =>
-            createRoute({
-                runtime: 'edge',
-                plugins: [
-                    {
-                        name: 'node-database',
-                        runtime: 'nodejs',
-                        install() {
-                            return {}
-                        },
-                    },
-                ],
-            }),
-        ).toThrow(RuntimeIncompatiblePluginError)
-
-        expect(() =>
-            createRoute({
-                runtime: 'edge',
-                plugins: [
-                    {
-                        name: 'node-database',
-                        runtime: 'nodejs',
-                        install() {
-                            return {}
-                        },
-                    },
-                ],
-            }),
-        ).toThrow('Use a compatible plugin or create a separate Factory')
-    })
-
-    it('validates inherited plugins when a scope selects a runtime', () => {
-        const route = createRoute({
-            plugins: [
-                {
-                    name: 'node-database',
-                    runtime: 'nodejs',
-                    install() {
-                        return {}
-                    },
-                },
-            ],
-        })
-
-        expect(() => route.extend({ runtime: 'edge' })).toThrow('node-database')
-    })
-
-    it('exposes the configured runtime in route metadata', async () => {
-        const route = createRoute({ runtime: 'edge' })
-        const GET = route({ handler: ({ meta }) => ({ runtime: meta.runtime }) })
-
-        const response = await GET(new Request('https://example.test/runtime'))
-
-        expect(await response.json()).toEqual({ runtime: 'edge' })
-    })
-
-    it('keeps factories immutable and applies scope configuration through extend', async () => {
-        const global = createRoute({
-            guards: [
-                {
-                    name: 'global-guard',
-                    canActivate() {
-                        return true
-                    },
-                },
-            ],
-        })
-        const scoped = global.extend({
+    it('lets an exception filter use locals created by middleware', async () => {
+        const route = createRoute<AppLocals>({
             middleware: [
                 {
-                    name: 'scope-middleware',
-                    async handle(_context, next) {
-                        return { scope: await next() }
+                    name: 'request-id',
+                    use(context, next) {
+                        context.locals.requestId = 'req-filter'
+                        return next()
                     },
                 },
             ],
-        })
-
-        const baseResponse = await global({ handler: () => ({ base: true }) })(new Request('https://example.test/base'))
-        const scopedResponse = await scoped({ handler: () => ({ scoped: true }) })(new Request('https://example.test/scoped'))
-
-        expect(await baseResponse.json()).toEqual({ base: true })
-        expect(await scopedResponse.json()).toEqual({
-            scope: { scoped: true },
-        })
-    })
-
-    it('resolves function input exactly once before the pipeline runs', async () => {
-        let inputCalls = 0
-        const route = createRoute()
-        const POST = route({
-            input: async ({ request }) => {
-                inputCalls += 1
-                return request.headers.get('x-value')
-            },
-            handler: ({ input }) => ({ input }),
-        })
-
-        const response = await POST(
-            new Request('https://example.test/input', {
-                headers: { 'x-value': 'parsed' },
-            }),
-        )
-
-        expect(inputCalls).toBe(1)
-        expect(await response.json()).toEqual({ input: 'parsed' })
-    })
-
-    it('maps input resolver errors through the configured error mappers', async () => {
-        const route = createRoute({
-            errorMappers: [
+            exceptionFilters: [
                 {
-                    name: 'input-error',
-                    map(error) {
-                        if (error instanceof Error && error.message === 'bad input') {
-                            return Response.json({ code: 'BAD_INPUT' }, { status: 422 })
+                    name: 'filter',
+                    catch(error, context) {
+                        if (error instanceof HttpError) {
+                            return Response.json({ code: error.code, requestId: context.locals.requestId }, { status: error.status })
                         }
 
                         return undefined
@@ -367,286 +313,206 @@ describe('createRoute', () => {
                 },
             ],
         })
-        const POST = route({
-            input: () => {
-                throw new Error('bad input')
+
+        const GET = route({
+            handler: () => {
+                throw new HttpError({ status: 422, code: 'INVALID_ARTICLE', message: 'invalid article' })
             },
-            handler: () => ({ shouldNotRun: true }),
         })
 
-        const response = await POST(new Request('https://example.test/input-error'))
+        const response = await GET(new Request('https://example.test/articles'))
 
         expect(response.status).toBe(422)
-        expect(await response.json()).toEqual({ code: 'BAD_INPUT' })
+        expect(await response.json()).toEqual({ code: 'INVALID_ARTICLE', requestId: 'req-filter' })
     })
 
-    it('maps params resolution errors through the configured error mappers', async () => {
-        const route = createRoute({
-            errorMappers: [
+    it('keeps Factory scopes immutable and composes extend configuration', async () => {
+        const root = createRoute<AppLocals>({
+            middleware: [
                 {
-                    name: 'params-error',
-                    map(error) {
-                        if (error instanceof Error && error.message === 'bad params') {
-                            return Response.json({ code: 'BAD_PARAMS' }, { status: 400 })
-                        }
-
-                        return undefined
+                    name: 'root-middleware',
+                    use(_context, next) {
+                        return next()
                     },
                 },
             ],
         })
-        const GET = route({
-            handler: () => ({ shouldNotRun: true }),
-        })
-
-        const response = await GET(new Request('https://example.test/params-error'), {
-            params: Promise.reject(new Error('bad params')),
-        })
-
-        expect(response.status).toBe(400)
-        expect(await response.json()).toEqual({ code: 'BAD_PARAMS' })
-    })
-
-    it('caches one-shot request body reads inside the input resolver', async () => {
-        const route = createRoute()
-        const POST = route({
-            input: async ({ readBody }) => {
-                const first = await readBody<{ value: string }>()
-                const second = await readBody<{ value: string }>()
-                return { first, second }
-            },
-            handler: ({ input }) => input,
-        })
-
-        const response = await POST(
-            new Request('https://example.test/body', {
-                method: 'POST',
-                body: JSON.stringify({ value: 'cached' }),
-                headers: { 'content-type': 'application/json' },
-            }),
-        )
-
-        expect(await response.json()).toEqual({
-            first: { value: 'cached' },
-            second: { value: 'cached' },
-        })
-    })
-
-    it('installs global plugins when the Factory is created, not per request', async () => {
-        let installCount = 0
-        const route = createRoute({
-            plugins: [
+        const child = root.extend({
+            guards: [
                 {
-                    name: 'once',
-                    install() {
-                        installCount += 1
-                        return {}
-                    },
+                    name: 'child-guard',
+                    canActivate: () => true,
                 },
             ],
         })
 
-        expect(installCount).toBe(1)
-        const GET = route({ handler: () => ({ ok: true }) })
+        expect(root.config.middleware).toHaveLength(1)
+        expect(root.config.guards).toHaveLength(0)
+        expect(child.config.middleware).toHaveLength(1)
+        expect(child.config.guards).toHaveLength(1)
+        expect(Object.isFrozen(root.config.middleware)).toBe(true)
 
-        await GET(new Request('https://example.test/one'))
-        await GET(new Request('https://example.test/two'))
-
-        expect(installCount).toBe(1)
-    })
-
-    it('installs route-local use plugins when the handler is compiled', async () => {
-        let installCount = 0
-        const events: string[] = []
-        const route = createRoute()
-        const GET = route({
-            use: [
-                {
-                    name: 'route-use',
-                    install() {
-                        installCount += 1
-                        return {
-                            middleware: [
-                                {
-                                    name: 'route-use-middleware',
-                                    handle(_context, next) {
-                                        events.push('before')
-                                        return next().then((result) => {
-                                            events.push('after')
-                                            return result
-                                        })
-                                    },
-                                },
-                            ],
-                        }
-                    },
-                },
-            ],
+        const GET = child({
             handler: () => ({ ok: true }),
         })
 
-        expect(installCount).toBe(1)
-        await GET(new Request('https://example.test/route-use'))
-        await GET(new Request('https://example.test/route-use-again'))
-
-        expect(installCount).toBe(1)
-        expect(events).toEqual(['before', 'after', 'before', 'after'])
+        expect(await (await GET(new Request('https://example.test'))).json()).toEqual({ ok: true })
     })
 
-    it('passes through a Response returned by the handler', async () => {
-        const route = createRoute()
-        const response = await route({
-            handler: () => new Response('raw', { status: 201 }),
-        })(new Request('https://example.test/raw'))
+    it('installs custom plugin contributions and rejects incompatible runtime targets before serving requests', async () => {
+        const events: string[] = []
+        const plugin: RoutePlugin = {
+            name: 'request-policy',
+            runtime: 'nodejs' as const,
+            install() {
+                return {
+                    middleware: [
+                        {
+                            name: 'plugin-middleware',
+                            async use(_context, next) {
+                                events.push('middleware:before')
+                                const result = await next()
+                                events.push('middleware:after')
+                                return result
+                            },
+                        },
+                    ],
+                    interceptors: [
+                        {
+                            name: 'plugin-interceptor',
+                            async intercept(_context, next) {
+                                events.push('interceptor:before')
+                                const result = await next()
+                                events.push('interceptor:after')
+                                return result
+                            },
+                        },
+                    ],
+                }
+            },
+        }
+
+        const route = createRoute({ runtime: 'nodejs', plugins: [plugin] })
+        const GET = route({
+            handler: () => {
+                events.push('handler')
+                return { ok: true }
+            },
+        })
+
+        const response = await GET(new Request('https://example.test/plugins'))
+
+        expect(await response.json()).toEqual({ ok: true })
+        expect(events).toEqual(['middleware:before', 'interceptor:before', 'handler', 'interceptor:after', 'middleware:after'])
+        expect(() => createRoute({ runtime: 'edge', plugins: [plugin] })).toThrow(RuntimeIncompatiblePluginError)
+    })
+
+    it('passes through a native Response returned by the handler', async () => {
+        const GET = createRoute()({
+            handler: () => new Response('accepted', { status: 202 }),
+        })
+
+        const response = await GET(new Request('https://example.test'))
+
+        expect(response.status).toBe(202)
+        expect(await response.text()).toBe('accepted')
+    })
+
+    it('exposes argument metadata to custom pipes', async () => {
+        let metadata: ArgumentMetadata | undefined
+        const pipe: Pipe = {
+            name: 'metadata',
+            transform(value, currentMetadata) {
+                metadata = currentMetadata
+                return value
+            },
+        }
+        const GET = createRoute()({
+            query: query(),
+            pipes: [pipe],
+            handler: (_request, { query: values }) => values,
+        })
+
+        await GET(new Request('https://example.test?mode=full'))
+
+        expect(metadata).toEqual({
+            type: 'query',
+            name: 'query',
+        })
+    })
+
+    it('keeps body metadata for custom body resolvers', async () => {
+        let metadata: ArgumentMetadata | undefined
+        const route = createRoute({
+            pipes: [
+                {
+                    name: 'body-only',
+                    transform(value, currentMetadata) {
+                        metadata = currentMetadata
+                        expect(currentMetadata.type).toBe('body')
+                        return value
+                    },
+                },
+            ],
+        })
+        const POST = route<ResourceParams, ResourceBody>({
+            body: async ({ readBody }) => readBody<ResourceBody>(),
+            handler: (_request, { body }) => body,
+        })
+
+        const response = await POST(
+            new Request('https://example.test/resources', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ label: 'sample', size: 2 }),
+            }),
+            nextParams({ tenantId: 'tenant-demo' }),
+        )
+
+        expect(metadata).toEqual({
+            type: 'body',
+            name: 'body',
+        })
+        expect(await response.json()).toEqual({ label: 'sample', size: 2 })
+    })
+
+    it('preserves a native Response through a response-aware interceptor', async () => {
+        const GET = createRoute({
+            interceptors: [
+                {
+                    name: 'response-envelope',
+                    async intercept(_context, next) {
+                        const value = await next()
+
+                        if (value instanceof Response) {
+                            return value
+                        }
+
+                        return { data: value }
+                    },
+                },
+            ],
+        })({
+            handler: () => new Response('accepted', { status: 202, headers: { 'x-custom': 'kept' } }),
+        })
+
+        const response = await GET(new Request('https://example.test'))
+
+        expect(response.status).toBe(202)
+        expect(response.headers.get('x-custom')).toBe('kept')
+        expect(await response.text()).toBe('accepted')
+    })
+
+    it('uses a route response serializer for plain values', async () => {
+        const GET = createRoute()({
+            response: jsonResponse({ status: 201, headers: { 'x-route': 'kit' } }),
+            handler: () => ({ created: true }),
+        })
+
+        const response = await GET(new Request('https://example.test'))
 
         expect(response.status).toBe(201)
-        expect(await response.text()).toBe('raw')
-    })
-
-    it('supports the response alias on an individual route', async () => {
-        const route = createRoute()
-        const GET = route({
-            response: {
-                name: 'route-response',
-                serialize(value) {
-                    return Response.json({ wrapped: value })
-                },
-            },
-            handler: () => ({ ok: true }),
-        })
-
-        const response = await GET(new Request('https://example.test/route-response'))
-
-        expect(await response.json()).toEqual({ wrapped: { ok: true } })
-    })
-
-    it('snapshots the input definition when compiling a route', async () => {
-        const route = createRoute()
-        const options: {
-            input: string
-            handler: (context: { input: string }) => string
-        } = {
-            input: 'initial',
-            handler: ({ input }) => input,
-        }
-        const GET = route(options)
-        options.input = 'mutated'
-
-        const response = await GET(new Request('https://example.test/input-snapshot'))
-
-        expect(await response.json()).toBe('initial')
-    })
-
-    it('resolves standard request input sources as one typed input object', async () => {
-        const route = createRoute()
-        const POST = route({
-            input: {
-                body: jsonBody<{ name: string }>(),
-                query: query(),
-                params: params<{ id: string }>(),
-                headers: headers(),
-            },
-            handler: ({ input }) => ({
-                name: input.body.name,
-                id: input.params.id,
-                tags: input.query.tag,
-                authorization: input.headers.get('authorization'),
-            }),
-        })
-
-        const response = await POST(
-            new Request('https://example.test/users/7?tag=one&tag=two', {
-                method: 'POST',
-                body: JSON.stringify({ name: 'Ada' }),
-                headers: {
-                    authorization: 'Bearer token',
-                    'content-type': 'application/json',
-                },
-            }),
-            { params: Promise.resolve({ id: '7' }) },
-        )
-
-        expect(await response.json()).toEqual({
-            name: 'Ada',
-            id: '7',
-            tags: ['one', 'two'],
-            authorization: 'Bearer token',
-        })
-    })
-
-    it('supports textBody without consuming the request more than once', async () => {
-        const route = createRoute()
-        const POST = route({
-            input: textBody(),
-            handler: ({ input }) => input.toUpperCase(),
-        })
-
-        const response = await POST(
-            new Request('https://example.test/text', {
-                method: 'POST',
-                body: 'hello',
-            }),
-        )
-
-        expect(await response.json()).toBe('HELLO')
-    })
-
-    it('supports mixed input sources and literal input values', async () => {
-        const route = createRoute()
-        const POST = route({
-            input: {
-                body: jsonBody<{ name: string }>(),
-                version: 'v1',
-            },
-            handler: ({ input }) => ({
-                name: input.body.name,
-                version: input.version,
-            }),
-        })
-
-        const response = await POST(
-            new Request('https://example.test/mixed', {
-                method: 'POST',
-                body: JSON.stringify({ name: 'Ada' }),
-            }),
-        )
-
-        expect(await response.json()).toEqual({ name: 'Ada', version: 'v1' })
-    })
-
-    it('snapshots a source map when compiling a route', async () => {
-        const route = createRoute()
-        const sources = { value: headers() }
-        const GET = route({
-            input: sources,
-            handler: ({ input }) => input.value.get('x-value'),
-        })
-
-        Reflect.set(sources, 'value', textBody())
-
-        const response = await GET(
-            new Request('https://example.test/source-snapshot', {
-                headers: { 'x-value': 'original' },
-            }),
-        )
-
-        expect(await response.json()).toBe('original')
-    })
-
-    it('keeps reserved query keys as ordinary input data', async () => {
-        const route = createRoute()
-        const GET = route({
-            input: query(),
-            handler: ({ input }) => input,
-        })
-
-        const response = await GET(new Request('https://example.test/query?constructor=one&__proto__=two'))
-
-        expect(await response.json()).toEqual(
-            Object.fromEntries([
-                ['constructor', 'one'],
-                ['__proto__', 'two'],
-            ]),
-        )
+        expect(response.headers.get('x-route')).toBe('kit')
+        expect(await response.json()).toEqual({ created: true })
     })
 })

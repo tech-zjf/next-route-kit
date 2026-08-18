@@ -5,8 +5,8 @@ function createContext(): RouteContext {
     return {
         request: new Request('https://example.test/users'),
         params: {},
-        input: { value: 'raw' },
-        state: {},
+        args: { body: { value: 'raw' } },
+        locals: {},
         meta: { method: 'GET', pathname: '/users' },
     }
 }
@@ -19,13 +19,12 @@ const jsonSerializer = {
 }
 
 describe('executeRoutePipeline', () => {
-    it('passes route input metadata to input pipes', async () => {
-        const inputMetadata = { location: 'body' as const, name: 'json-body' }
+    it('passes per-argument metadata to pipes', async () => {
         let receivedMetadata: unknown
 
         const response = await executeRoutePipeline(
             {
-                inputPipes: [
+                pipes: [
                     {
                         name: 'metadata-observer',
                         transform(value, metadata) {
@@ -35,16 +34,26 @@ describe('executeRoutePipeline', () => {
                     },
                 ],
                 responseSerializer: jsonSerializer,
-                handler: (context) => context.input,
+                handler: (context) => context.args,
             },
-            { ...createContext(), inputMetadata },
+            {
+                ...createContext(),
+                args: { body: { ok: true } },
+                argumentMetadata: {
+                    type: 'custom',
+                    name: 'route-arguments',
+                    fields: {
+                        body: { type: 'body', name: 'json-body' },
+                    },
+                },
+            },
         )
 
-        expect(receivedMetadata).toBe(inputMetadata)
-        expect(await response.json()).toEqual({ value: 'raw' })
+        expect(receivedMetadata).toEqual({ type: 'body', name: 'json-body' })
+        expect(await response.json()).toEqual({ body: { ok: true } })
     })
 
-    it('runs middleware, guards, pipes, interceptors, and the handler in order', async () => {
+    it('runs the request lifecycle in order', async () => {
         const events: string[] = []
 
         const response = await executeRoutePipeline(
@@ -52,7 +61,7 @@ describe('executeRoutePipeline', () => {
                 middleware: [
                     {
                         name: 'middleware',
-                        async handle(_context, next) {
+                        async use(_context, next) {
                             events.push('middleware:before')
                             const result = await next()
                             events.push('middleware:after')
@@ -69,11 +78,11 @@ describe('executeRoutePipeline', () => {
                         },
                     },
                 ],
-                inputPipes: [
+                pipes: [
                     {
                         name: 'pipe',
-                        transform(value) {
-                            events.push('pipe')
+                        transform(value, metadata) {
+                            events.push('pipe:' + metadata.type)
                             return { ...(value as { value: string }), value: 'parsed' }
                         },
                     },
@@ -92,17 +101,24 @@ describe('executeRoutePipeline', () => {
                 responseSerializer: jsonSerializer,
                 handler(context) {
                     events.push('handler')
-                    return context.input
+                    return context.args.body
                 },
             },
-            createContext(),
+            {
+                ...createContext(),
+                argumentMetadata: {
+                    type: 'custom',
+                    name: 'route-arguments',
+                    fields: { body: { type: 'body', name: 'json-body' } },
+                },
+            },
         )
 
-        expect(events).toEqual(['middleware:before', 'guard', 'pipe', 'interceptor:before', 'handler', 'interceptor:after', 'middleware:after'])
+        expect(events).toEqual(['middleware:before', 'guard', 'interceptor:before', 'pipe:body', 'handler', 'interceptor:after', 'middleware:after'])
         expect(await response.json()).toEqual({ value: 'parsed' })
     })
 
-    it('runs preparation after guards and before pipes and interceptors', async () => {
+    it('runs preparation and pipes inside the interceptor boundary', async () => {
         const events: string[] = []
         const context = createContext()
 
@@ -116,7 +132,7 @@ describe('executeRoutePipeline', () => {
                     },
                 },
             ],
-            inputPipes: [
+            pipes: [
                 {
                     name: 'pipe',
                     transform(value) {
@@ -143,10 +159,15 @@ describe('executeRoutePipeline', () => {
             },
         }).execute(context, () => {
             events.push('prepare')
-            context.input = { value: 'prepared' }
+            context.args = { body: { value: 'prepared' } }
+            context.argumentMetadata = {
+                type: 'custom',
+                name: 'route-arguments',
+                fields: { body: { type: 'body', name: 'json-body' } },
+            }
         })
 
-        expect(events).toEqual(['guard', 'prepare', 'pipe', 'interceptor:before', 'handler', 'interceptor:after'])
+        expect(events).toEqual(['guard', 'interceptor:before', 'prepare', 'pipe', 'handler', 'interceptor:after'])
         expect(await response.json()).toEqual({ ok: true })
     })
 
@@ -158,8 +179,8 @@ describe('executeRoutePipeline', () => {
             middleware: [
                 {
                     name: 'middleware',
-                    handle(currentContext, next) {
-                        events.push(`middleware:${currentContext.params.id}`)
+                    use(currentContext, next) {
+                        events.push('middleware:' + currentContext.params.id)
                         return next()
                     },
                 },
@@ -168,7 +189,7 @@ describe('executeRoutePipeline', () => {
                 {
                     name: 'guard',
                     canActivate(currentContext) {
-                        events.push(`guard:${currentContext.params.id}`)
+                        events.push('guard:' + currentContext.params.id)
                         return true
                     },
                 },
@@ -180,10 +201,10 @@ describe('executeRoutePipeline', () => {
             },
         }).execute(context, undefined, () => {
             events.push('context')
-            context.params = { id: '42' }
+            context.params = { id: 'sample-id' }
         })
 
-        expect(events).toEqual(['context', 'middleware:42', 'guard:42', 'handler'])
+        expect(events).toEqual(['context', 'middleware:sample-id', 'guard:sample-id', 'handler'])
         expect(await response.json()).toEqual({ ok: true })
     })
 
@@ -193,7 +214,7 @@ describe('executeRoutePipeline', () => {
                 middleware: [
                     {
                         name: 'result-transformer',
-                        async handle(_context, next) {
+                        async use(_context, next) {
                             const result = (await next()) as { ok: boolean }
                             return { ...result, transformed: true }
                         },
@@ -208,7 +229,7 @@ describe('executeRoutePipeline', () => {
         expect(await response.json()).toEqual({ ok: true, transformed: true })
     })
 
-    it('maps a denied guard through the configured error mapper', async () => {
+    it('maps a denied guard through an exception filter', async () => {
         const response = await executeRoutePipeline(
             {
                 guards: [
@@ -217,10 +238,10 @@ describe('executeRoutePipeline', () => {
                         canActivate: () => false,
                     },
                 ],
-                errorMappers: [
+                exceptionFilters: [
                     {
                         name: 'http-error',
-                        map(error) {
+                        catch(error) {
                             if (error instanceof Error && error.message.includes('permission')) {
                                 return Response.json({ code: 'FORBIDDEN' }, { status: 403 })
                             }
@@ -239,12 +260,12 @@ describe('executeRoutePipeline', () => {
         expect(await response.json()).toEqual({ code: 'FORBIDDEN' })
     })
 
-    it('maps errors from request preparation through the configured error mapper', async () => {
+    it('maps errors from request preparation through an exception filter', async () => {
         const response = await new RoutePipeline({
-            errorMappers: [
+            exceptionFilters: [
                 {
                     name: 'preparation-error',
-                    map(error) {
+                    catch(error) {
                         if (error instanceof Error && error.message === 'invalid input') {
                             return Response.json({ code: 'INVALID_INPUT' }, { status: 422 })
                         }
@@ -263,8 +284,9 @@ describe('executeRoutePipeline', () => {
         expect(await response.json()).toEqual({ code: 'INVALID_INPUT' })
     })
 
-    it('returns a guard Response without running the handler', async () => {
+    it('returns a guard Response without running interceptors or the handler', async () => {
         let handlerCalled = false
+        let interceptorCalled = false
 
         const response = await executeRoutePipeline(
             {
@@ -272,6 +294,15 @@ describe('executeRoutePipeline', () => {
                     {
                         name: 'short-circuit',
                         canActivate: () => Response.json({ ok: false }, { status: 401 }),
+                    },
+                ],
+                interceptors: [
+                    {
+                        name: 'interceptor',
+                        intercept(_context, next) {
+                            interceptorCalled = true
+                            return next()
+                        },
                     },
                 ],
                 responseSerializer: jsonSerializer,
@@ -284,6 +315,7 @@ describe('executeRoutePipeline', () => {
         )
 
         expect(handlerCalled).toBe(false)
+        expect(interceptorCalled).toBe(false)
         expect(response.status).toBe(401)
     })
 

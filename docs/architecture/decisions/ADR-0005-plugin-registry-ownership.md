@@ -10,10 +10,10 @@ transformation. That works for simple middleware, but it hides an important
 ownership question: which scope installed a plugin, and should a child scope
 install the parent plugin again?
 
-Cordis separates plugin registration and runtime ownership behind a Registry and
-Fiber model. The Route Kit needs the ownership boundary, but not Cordis's
-long-lived reactive service runtime because a Next.js Route Handler is created
-by the module graph and executed with request-local state.
+Plugin registration and runtime ownership need an explicit Registry boundary.
+The Route Kit needs that ownership boundary, but not a long-lived reactive
+service runtime because a Next.js Route Handler is created by the module graph
+and executed with request-local state.
 
 ## Decision
 
@@ -67,7 +67,7 @@ Trade-offs:
 - full runtime lifecycle management is intentionally deferred until the Next
   adapter can define reliable shutdown/reload semantics.
 
-## What is borrowed from Cordis
+## Design principles
 
 - explicit ownership instead of scattered registration;
 - immutable parent/child composition;

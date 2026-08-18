@@ -6,6 +6,6 @@ type EchoInput = {
 }
 
 export const POST = route({
-    input: jsonBody<EchoInput>(),
-    handler: ({ input }) => ({ echo: input.message }),
+    body: jsonBody<EchoInput>(),
+    handler: (_request, { body }) => ({ echo: body.message }),
 })

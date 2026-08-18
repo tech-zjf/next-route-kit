@@ -6,7 +6,7 @@ describe('request testing helpers', () => {
         const builder = RequestBuilder.post<{ id: string }>('/api/users')
             .query({ tag: ['one', 'two'], page: 2 })
             .header('x-test', 'enabled')
-            .params({ id: '42' })
+            .params({ id: 'sample-id' })
             .json({ name: 'Ada' })
 
         const request = builder.build()
@@ -16,14 +16,14 @@ describe('request testing helpers', () => {
         expect(request.headers.get('content-type')).toBe('application/json')
         expect(request.headers.get('x-test')).toBe('enabled')
         expect(await request.json()).toEqual({ name: 'Ada' })
-        expect(await builder.buildContext().params).toEqual({ id: '42' })
+        expect(await builder.buildContext().params).toEqual({ id: 'sample-id' })
     })
 
     it('invokes a route handler with the builder request and context', async () => {
         const handler = async (_request: Request, context: { params: Promise<{ id: string }> }) => Response.json({ id: (await context.params).id })
-        const response = await invokeRoute(handler, RequestBuilder.get<{ id: string }>('/api/users').params({ id: '42' }))
+        const response = await invokeRoute(handler, RequestBuilder.get<{ id: string }>('/api/users').params({ id: 'sample-id' }))
 
-        await expectResponse(response).toHaveJson({ id: '42' })
+        await expectResponse(response).toHaveJson({ id: 'sample-id' })
     })
 
     it('preserves repeated URLSearchParams values', () => {

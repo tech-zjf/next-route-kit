@@ -10,11 +10,10 @@ freezes configuration, creates child scopes, compiles a pipeline, and controls
 when those operations happen. Keeping those responsibilities as unrelated
 module functions makes lifecycle and ownership harder to see.
 
-The Cordis implementation in DeepSeek Harness demonstrates a useful pattern:
-context, registry, service, fiber, and event responsibilities are represented by
-objects with explicit ownership and lifecycle. The Route Kit should learn from
-that direction without importing its dependency-injection or reactive service
-model into Next.js Route Handlers.
+Class-oriented plugin systems demonstrate a useful pattern: context, registry,
+service, and lifecycle responsibilities are represented by objects with explicit
+ownership. The Route Kit adopts that boundary without importing a dependency-
+injection or reactive service model into Next.js Route Handlers.
 
 ## Decision
 
@@ -52,7 +51,7 @@ kept as a thin compatibility facade, not as the primary implementation.
 Its optional request-preparation callback runs inside the same error boundary as
 the middleware, guards, pipes, interceptors, handler, and serializer.
 
-## What is intentionally not copied from Cordis
+## What is intentionally not included
 
 - no global service registry;
 - no runtime file scanning;

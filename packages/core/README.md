@@ -1,23 +1,60 @@
 # @next-route-kit/core
 
-Framework-neutral contracts, plugin registry, and pipeline runtime for
-`next-route-kit`.
+Framework-neutral request lifecycle contracts and plugin registry for
+next-route-kit.
 
 ```bash
-pnpm add @next-route-kit/core
+npm install @next-route-kit/core
 ```
 
-For application usage, start with the [English user guide](https://github.com/tech-zjf/next-route-kit/blob/main/docs/en/README.md)
-or [简体中文用户指南](https://github.com/tech-zjf/next-route-kit/blob/main/docs/zh-CN/README.md). This package is the advanced
-framework-neutral layer for plugin authors and adapter authors.
+Application users normally install `next-route-kit`. Use Core when authoring
+plugins or another Web Request/Response adapter.
 
-This package intentionally depends on Web APIs and TypeScript contracts rather
-than importing Next.js. The user-facing `next-route-kit` package adapts these
-contracts to App Router Route Handler functions. `RoutePluginRegistry` owns
-explicit plugin installation and immutable parent/child contribution scopes;
-its registry instances are frozen after installation; `RoutePipeline` owns
-deterministic request-stage execution. When a target runtime is supplied,
-`RoutePluginRegistry.snapshot(runtime)` validates plugin runtime declarations and
-throws `RuntimeIncompatiblePluginError` before route compilation continues.
-Application users normally install `next-route-kit`; use Core directly when
-authoring plugins or building another Web API-compatible adapter.
+The stable stages are:
+
+```text
+Middleware → Guard → Interceptor (enter) → Pipes → Handler
+→ Interceptor (exit) → Response serialization
+```
+
+`ExceptionFilter.catch()` can convert errors from the whole chain.
+`RouteContext` contains the native `request`, hydrated `params`,
+request-local `locals`, and an adapter-owned `args` store. The Next adapter
+maps resolved arguments into named handler context properties, so normal
+application routes do not expose `args`.
+
+## Plugin contract
+
+```ts
+import type { RoutePlugin } from '@next-route-kit/core'
+
+export class RequestLogPlugin implements RoutePlugin {
+    readonly name = 'request-log'
+    readonly runtime = 'both' as const
+
+    install() {
+        return {
+            middleware: [
+                {
+                    name: 'request-log',
+                    async use(context, next) {
+                        const startedAt = Date.now()
+                        const result = await next()
+                        console.info(context.request.method, context.meta.pathname, Date.now() - startedAt)
+                        return result
+                    },
+                },
+            ],
+        }
+    }
+}
+```
+
+Contributions use `middleware`, `guards`, `pipes`, `interceptors`,
+`exceptionFilters`, and an optional `responseSerializer`. The registry
+installs plugins explicitly, freezes contribution snapshots, composes child
+scopes without reinstalling parent plugins, and validates declared Node/Edge
+compatibility.
+
+Core does not import Next.js, scan routes, provide dependency injection, or
+choose a validation library.
