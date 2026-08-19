@@ -21,11 +21,17 @@ dependency. The first adapter exposes:
   replacement;
 - `ZodValidationError` with normalized, immutable issues and input metadata;
 - `ZodExceptionFilter` / `zodExceptionFilter(options)` for configurable JSON
-  responses.
+  responses when the application wants a standalone Zod error shape.
 
 The adapter depends only on `@next-route-kit/core` contracts. Core and
 `next-route-kit` do not import Zod. The adapter uses the async parse API so
 schemas with asynchronous refinements are supported.
+
+`ZodExceptionFilter` is never installed by default. Applications that use the
+main package's `{ code, msg, data }` response plugin should register `zodPipe()`
+and map `ZodValidationError` through `apiResponsePlugin({ mapError })` instead;
+the generic hook keeps the response contract without coupling the main package
+to Zod.
 
 ## Consequences
 

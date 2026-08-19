@@ -87,6 +87,11 @@ Filters run from the route-local scope outward. Returning `undefined` passes
 the error to the next filter. The default filter handles built-in `HttpError`
 and malformed JSON.
 
+`HttpError.details` is included in that default JSON response, and
+`ApiException.data` is included by the API response plugin. Treat both as
+client-visible data: keep secrets and internal diagnostics in `onUnknownError`
+or server-side logs instead.
+
 ## Responses
 
 Plain values use `jsonResponse()`. A native `Response` passes through

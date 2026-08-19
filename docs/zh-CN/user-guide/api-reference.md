@@ -13,6 +13,9 @@ const handler = route<TParams, TBody, TQuery, TResult>(options)
 `createRoute` 返回一个 class-backed、可调用的 `Factory`。结果可直接作为
 Next App Router 的方法导出。
 
+`TParams` 可以使用普通的 `type` 类型别名，也可以使用 `interface`。不提供
+Route 参数类型时，则使用默认的 `RouteParams` 结构。
+
 ## Route 选项
 
 ```ts
@@ -107,6 +110,10 @@ const apiRoute = createRoute({
         apiResponsePlugin({
             success: ResponseCode.SUCCESS,
             systemError: ResponseCode.INTERNAL_ERROR,
+            mapError: (error, context) => {
+                // 可选适配器可以在这里映射自己的异常。
+                return undefined
+            },
         }),
     ],
 })
@@ -121,3 +128,18 @@ throw new ApiException(ResponseCode.RESOURCE_NOT_FOUND, {
 `Response` 仍然直接透传。`ResponseCodeDefinition` 包含 `code`、`msg` 和可选的 HTTP
 `status`；`ApiException` 支持可选的 `message`、`data`、`status`、`cause` 覆盖值。
 完整契约和迁移示例见[统一 API 响应指南](api-response.md)。
+
+`mapError(error, context)` 是可选配置，返回 `undefined` 或应用自己的错误映射：
+
+```ts
+type ApiResponseErrorMapping = {
+    code: ResponseCodeDefinition
+    status?: number
+    message?: string
+    data?: Readonly<Record<string, unknown>>
+}
+```
+
+它就是适配器边界。例如，可选的 Zod 包可以在这里映射
+`ZodValidationError`，主包不需要依赖 Zod。独立的 Zod ExceptionFilter 则是另一种
+选择，适用于不使用统一 API 外壳的 Route。

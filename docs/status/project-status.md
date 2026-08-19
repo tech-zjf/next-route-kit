@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 ## Current state
 
@@ -94,7 +94,7 @@ export const POST = authenticatedRoute({
 - Prettier：通过；
 - ESLint：通过，0 warning；
 - typecheck：通过，6 个 workspace package；
-- test：通过，56 个 package tests；
+- test：通过，Core、主包、testing 和 Zod 测试全部通过；
 - build：通过，Core、adapter、Zod、testing 和 Next 15/16 fixtures；
 - verify:packed：通过，4 个公开包的实际 tarball 边界和外部 consumer；
 - verify:next:prod：通过，Next 15.5.23、16.3.1 Node/Edge HTTP smoke；
@@ -118,6 +118,11 @@ Next 16 报告 Edge Runtime deprecated。这些不是 package 失败，详见
 6. 发布后将 npm 版本、tag、CI URL 写回本文件。
 
 这些操作本轮没有执行。
+
+补充审计记录：只读查询确认四个公开包目前尚未出现在 npm registry；`pnpm audit --prod`
+报告的 3 个 high、2 个 moderate 漏洞全部来自私有 Next 15 fixture 的 `next` 传递依赖
+（`sharp`/`postcss`），四个公开包的实际 tarball 不包含 Next 或这些依赖。该问题不阻断
+npm 包发布，但在仓库层面仍应在后续升级 fixture 或明确接受风险前保持记录。
 
 ## 产品成功标准
 
@@ -148,6 +153,37 @@ JSON CRUD/Auth Route，比较改造前后：
 
 ## Activity log
 
+### 2026-08-19 — Optional adapter response boundary and release review
+
+- 明确主包不依赖、不注册 Zod；Zod 校验和 `zodExceptionFilter()` 保持在可选适配包中；
+- 为 `apiResponsePlugin()` 增加通用 `mapError`，可把任意可选适配器异常映射回统一的
+  `{ code, msg, data }` 契约，避免独立 Filter 覆盖统一响应结构；
+- 双语 README、统一响应指南、输入校验指南、API Reference、Zod 包 README 和 ADR 已同步说明
+  两种互斥错误边界的选择方式；
+- 重绘中英文请求链路图，准确表达 `Interceptor enter → Resolver → Pipe → Handler → Interceptor exit`；
+- 修正发布文档中的当前测试数量表述，删除首发基线中会触发额外版本 bump 的 API response changeset；
+- 完整 `release:check` 通过，包含文档、lint、typecheck、全部 package tests、构建、packed consumer、
+  Next.js 15/16 production 与 Turbopack smoke。
+
+### 2026-08-19 — Route parameter type compatibility fix
+
+- 修复 `RouteParams` 索引签名导致 `interface Params` 无法传给 Route Factory 的公开类型问题；
+- 将公开泛型约束改为兼容 `interface` 的参数约束，保留默认 `RouteParams` 结构以及
+  `string | string[] | undefined` 的字段校验，并同步覆盖 Core、主包输入源、testing helpers 和内部 Factory 类型；
+- 增加主包 Factory 与 testing helpers 的 interface 参数类型回归覆盖；
+- `typecheck`、全部 package tests、ESLint 已通过，修复后的完整 `release:check` 已通过。
+
+### 2026-08-18 — Final release review and generic examples
+
+- 将 README、用户指南、架构示例和主包测试中的具体详情资源统一改为泛化的
+  `resources/:id` / `Resource` 命名，避免让示例绑定某一种业务领域；
+- 复核 Core Pipeline、Next Route Factory、插件 Registry、API 响应插件、Zod 适配器、
+  testing helpers、npm tarball 边界以及 Next 15/16 fixtures；
+- 本地发布门禁保持通过：全部 package tests、严格类型检查、ESLint、Prettier、构建、packed
+  consumer 和 Next 15/16 production/Turbopack smoke；
+- 确认本轮仍未执行 commit、push 或 npm publish；实际发布仍需维护者完成 npm 权限、
+  GitHub CI 和受保护 Release workflow 操作。
+
 ### 2026-08-18 — Plugin documentation and coverage
 
 - 在根目录中英文 README 增加可直接复制的 class-based 自定义插件示例；
@@ -161,7 +197,7 @@ JSON CRUD/Auth Route，比较改造前后：
   `responseCode` 字段；
 - 清理用户文档、测试、fixtures、CI 和维护文档中的旧业务示例、旧候选包名及外部项目痕迹；
 - 保留根目录 README 的核心使用路径，把架构决策和发布记录留在维护者文档中；
-- 重新通过完整 `release:check`，包含 55 篇 Markdown、56 个测试、打包消费者以及 Next 15/16
+- 重新通过完整 `release:check`，包含 Markdown 校验、全部 package tests、打包消费者以及 Next 15/16
   的生产与开发 HTTP 冒烟验证。
 
 ### 2026-08-18 — Native API refactor
@@ -218,7 +254,7 @@ JSON CRUD/Auth Route，比较改造前后：
 - 新增 5 个主包 API Contract 测试，并把成功、未登录和业务异常追加到真实 authenticated
   resource flow，覆盖成功、业务异常、系统异常、列表数据和原生 Response；
 - 新增中英文用户指南、根 README 使用摘要、包 README 和 Changeset；
-- 通过完整 `release:check`（含 lint、typecheck、56 个测试、build、packed consumer、
+- 通过完整 `release:check`（含 lint、typecheck、全部 package tests、build、packed consumer、
   Next 15/16 production/Turbopack smoke 和 Prettier）；
 - 保留边界：包不替前端决定 Toast/Dialog，业务码和前端处理器仍由应用维护；流、上传、
   Webhook、Cron 和长任务不强制迁移。

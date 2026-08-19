@@ -89,7 +89,7 @@ export interface ZodExceptionFilterOptions {
     readonly headers?: HeadersInit
 }
 
-/** Maps ZodValidationError into a stable JSON error response. */
+/** Maps ZodValidationError into this adapter's standalone JSON response. */
 export class ZodExceptionFilter<TContext extends AnyRouteContext = AnyRouteContext> implements ExceptionFilter<TContext> {
     readonly name: string
     private readonly status: number

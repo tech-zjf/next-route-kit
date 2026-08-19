@@ -81,6 +81,8 @@ const validateBody: Pipe = {
 const route = createRoute({ pipes: [validateBody] })
 ```
 
-Core stays validator-agnostic. The optional Zod adapter provides
-`zodPipe()` and `zodExceptionFilter()`. Use `appliesTo` when a scope has
-both body and query schemas.
+Core stays validator-agnostic. The optional `@next-route-kit/zod` package provides
+`zodPipe()` and, for non-envelope routes, `zodExceptionFilter()`. If the route
+uses `apiResponsePlugin()`, map `ZodValidationError` through its optional
+`mapError` callback instead so validation errors keep the `{ code, msg, data }`
+contract. Use `appliesTo` when a scope has both body and query schemas.

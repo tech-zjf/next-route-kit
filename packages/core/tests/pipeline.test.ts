@@ -19,6 +19,37 @@ const jsonSerializer = {
 }
 
 describe('executeRoutePipeline', () => {
+    it('supports adapter context preparation before middleware', async () => {
+        const events: string[] = []
+
+        const response = await executeRoutePipeline(
+            {
+                middleware: [
+                    {
+                        name: 'middleware',
+                        use(context, next) {
+                            events.push(`middleware:${(context.params as { id?: string }).id}`)
+                            return next()
+                        },
+                    },
+                ],
+                responseSerializer: jsonSerializer,
+                handler: (context) => context.params,
+            },
+            {
+                ...createContext(),
+                params: {},
+            },
+            undefined,
+            async (context) => {
+                context.params = { id: 'prepared' }
+            },
+        )
+
+        expect(events).toEqual(['middleware:prepared'])
+        expect(await response.json()).toEqual({ id: 'prepared' })
+    })
+
     it('passes per-argument metadata to pipes', async () => {
         let receivedMetadata: unknown
 

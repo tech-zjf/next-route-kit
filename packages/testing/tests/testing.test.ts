@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { createTestPlugin, expectResponse, invokeRoute, RequestBuilder, ResponseAssertionError } from '../src/index.js'
 
+interface TestParams {
+    id: string
+}
+
 describe('request testing helpers', () => {
     it('builds an immutable request and async route params', async () => {
-        const builder = RequestBuilder.post<{ id: string }>('/api/users')
+        const builder = RequestBuilder.post<TestParams>('/api/users')
             .query({ tag: ['one', 'two'], page: 2 })
             .header('x-test', 'enabled')
             .params({ id: 'sample-id' })
@@ -21,7 +25,7 @@ describe('request testing helpers', () => {
 
     it('invokes a route handler with the builder request and context', async () => {
         const handler = async (_request: Request, context: { params: Promise<{ id: string }> }) => Response.json({ id: (await context.params).id })
-        const response = await invokeRoute(handler, RequestBuilder.get<{ id: string }>('/api/users').params({ id: 'sample-id' }))
+        const response = await invokeRoute(handler, RequestBuilder.get<TestParams>('/api/users').params({ id: 'sample-id' }))
 
         await expectResponse(response).toHaveJson({ id: 'sample-id' })
     })
@@ -34,7 +38,7 @@ describe('request testing helpers', () => {
 
     it('snapshots route params instead of retaining a caller-owned object', async () => {
         const params = { id: 'before' }
-        const builder = RequestBuilder.get<{ id: string }>('/api/users').params(params)
+        const builder = RequestBuilder.get<TestParams>('/api/users').params(params)
         params.id = 'after'
 
         expect(await builder.buildContext().params).toEqual({ id: 'before' })

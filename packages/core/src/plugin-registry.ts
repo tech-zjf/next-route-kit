@@ -33,19 +33,20 @@ export class RoutePluginRegistry {
     readonly plugins: readonly RoutePlugin[]
     readonly contributions: readonly RoutePluginContribution[]
 
-    constructor(plugins: readonly RoutePlugin[] = []) {
+    constructor(plugins: readonly RoutePlugin[] = [], runtime?: RouteRuntime) {
         this.plugins = Object.freeze([...plugins])
+        this.validateRuntime(runtime)
         this.contributions = Object.freeze(this.plugins.map((plugin) => RoutePluginRegistry.freezeContribution(plugin.install())))
         Object.freeze(this)
     }
 
     /** Return a child registry without modifying this registry. */
-    extend(plugins: readonly RoutePlugin[] = []): RoutePluginRegistry {
+    extend(plugins: readonly RoutePlugin[] = [], runtime?: RouteRuntime): RoutePluginRegistry {
         if (plugins.length === 0) {
             return this
         }
 
-        return this.compose(new RoutePluginRegistry(plugins))
+        return this.compose(new RoutePluginRegistry(plugins, runtime))
     }
 
     /** Compose a child registry whose plugin contributions have already been installed. */

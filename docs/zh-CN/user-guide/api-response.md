@@ -138,6 +138,40 @@ if (payload.code === ResponseCode.QUOTA_EXCEEDED.code) {
 未识别的异常会统一映射为 `systemError`，内部错误信息不会返回给客户端。可以用
 `onUnknownError` 接入日志、链路追踪或 Sentry。
 
+## 可选的校验适配器
+
+统一响应插件不依赖、也不会自动安装任何校验库。如果项目选择可选的 Zod 适配包，
+可以通过 `mapError` 把适配器异常映射到同一份响应契约：
+
+```ts
+import { apiResponsePlugin, createRoute } from 'next-route-kit'
+import { ZodValidationError, zodPipe } from '@next-route-kit/zod'
+
+const apiRoute = createRoute({
+    pipes: [zodPipe(schema, { appliesTo: 'body' })],
+    plugins: [
+        apiResponsePlugin({
+            success: ResponseCode.SUCCESS,
+            systemError: ResponseCode.INTERNAL_ERROR,
+            mapError: (error) => {
+                if (!(error instanceof ZodValidationError)) {
+                    return undefined
+                }
+
+                return {
+                    code: ResponseCode.INVALID_INPUT,
+                    data: { issues: error.issues },
+                }
+            },
+        }),
+    ],
+})
+```
+
+`@next-route-kit/zod` 完全可选。`zodExceptionFilter()` 是给不使用统一 API 外壳的
+Route 使用的另一种独立错误边界；不要和统一响应 Filter 同时注册，除非项目明确
+接受两套不同的响应结构。
+
 ## 从现有 Next API 迁移
 
 | 手写 Route 中重复的代码                                   | 统一契约后的写法                                                       |

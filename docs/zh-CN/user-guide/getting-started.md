@@ -27,15 +27,15 @@ export const route = createRoute({
 ## 编写详情接口
 
 ```ts
-// app/api/articles/[id]/route.ts
+// app/api/resources/[id]/route.ts
 import { route } from '@/src/server/routes'
 
-type ArticleParams = { id: string }
+type ResourceParams = { id: string }
 
-export const GET = route<ArticleParams>({
+export const GET = route<ResourceParams>({
     handler: async (request, { params }) => {
-        const article = await articleService.find(params.id)
-        return article ?? new Response(null, { status: 404 })
+        const resource = await resourceService.find(params.id)
+        return resource ?? new Response(null, { status: 404 })
     },
 })
 ```
@@ -77,14 +77,14 @@ const apiRoute = createRoute<ApiLocals>({ middleware: [requestContext] })
 ```ts
 import { jsonBody, query } from 'next-route-kit'
 
-type CreateArticle = { title: string }
+type CreateResource = { title: string }
 type CreateQuery = { publish?: string }
 
 export const POST = authenticatedRoute({
-    body: jsonBody<CreateArticle>(),
+    body: jsonBody<CreateResource>(),
     query: query<CreateQuery>(),
     handler: async (_request, { body, query: values, locals }) =>
-        articleService.create({
+        resourceService.create({
             userId: locals.userId,
             title: body.title,
             publish: values.publish === 'true',

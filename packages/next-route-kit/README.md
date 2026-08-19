@@ -15,23 +15,23 @@ or the [repository README](https://github.com/tech-zjf/next-route-kit#readme).
 ```ts
 import { createRoute, jsonBody, query } from 'next-route-kit'
 
-type ArticleParams = { id: string }
+type ResourceParams = { id: string }
 type UpdateInput = { title?: string }
 
 const route = createRoute({
     guards: [requireUser],
 })
 
-export const GET = route<ArticleParams>({
+export const GET = route<ResourceParams>({
     handler: async (request, { params, locals }) => {
-        return articleService.find(params.id, locals.userId)
+        return resourceService.find(params.id, locals.userId)
     },
 })
 
-export const PATCH = route<ArticleParams, UpdateInput>({
+export const PATCH = route<ResourceParams, UpdateInput>({
     body: jsonBody<UpdateInput>(),
     handler: async (_request, { params, body, locals }) => {
-        return articleService.update(params.id, locals.userId, body)
+        return resourceService.update(params.id, locals.userId, body)
     },
 })
 ```
@@ -100,6 +100,12 @@ Plain object results and `ApiException` values are converted to one
 remain application-owned, so a client can handle common auth/quota codes
 globally and feature-specific codes locally. Native `Response` values pass
 through unchanged.
+
+Validation is not built into this response contract. The main package does not
+depend on Zod or register a Zod filter. If an application installs the optional
+`@next-route-kit/zod` adapter, use `apiResponsePlugin({ mapError })` to map
+`ZodValidationError` into the envelope. Use `zodExceptionFilter()` instead only
+for a route that intentionally uses the adapter's standalone JSON shape.
 
 The pipeline is:
 

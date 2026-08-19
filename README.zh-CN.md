@@ -38,6 +38,7 @@ import { ApiException, apiResponsePlugin, createRoute } from 'next-route-kit'
 const ResponseCode = {
     SUCCESS: { code: 'OK', msg: '成功' },
     QUOTA_EXCEEDED: { code: 'QUOTA_EXCEEDED', msg: '配额不足', status: 409 },
+    INVALID_INPUT: { code: 'INVALID_INPUT', msg: '输入无效', status: 422 },
     INTERNAL_ERROR: { code: 'INTERNAL_ERROR', msg: '系统错误' },
 } as const
 
@@ -138,17 +139,17 @@ Handler 的第一个参数就是原生 Web `Request`，第二个参数只包含 
 提供的额外上下文。没有强制的 `args` 对象，也没有含义模糊的 `state`；
 请求级共享数据使用 `locals`。
 
-### 详情：`GET /articles/:id`
+### 详情：`GET /resources/:id`
 
 ```ts
 import { authenticatedRoute } from '@/src/server/routes'
 
-type ArticleParams = { id: string }
+type ResourceParams = { id: string }
 
-export const GET = authenticatedRoute<ArticleParams>({
+export const GET = authenticatedRoute<ResourceParams>({
     handler: async (request, { params, locals }) => {
-        const article = await articleService.find(params.id, locals.userId)
-        return article ?? new Response(null, { status: 404 })
+        const resource = await resourceService.find(params.id, locals.userId)
+        return resource ?? new Response(null, { status: 404 })
     },
 })
 ```
@@ -159,7 +160,7 @@ export const GET = authenticatedRoute<ArticleParams>({
 export const GET = authenticatedRoute({
     handler: async (request, { locals }) => {
         const url = new URL(request.url)
-        return articleService.list({
+        return resourceService.list({
             userId: locals.userId,
             search: url.searchParams.get('search') ?? undefined,
             page: Number(url.searchParams.get('page') ?? 1),
@@ -173,14 +174,14 @@ export const GET = authenticatedRoute({
 ```ts
 import { jsonBody, query } from 'next-route-kit'
 
-type CreateArticleInput = { title: string; content: string }
-type CreateArticleQuery = { publish?: string }
+type CreateResourceInput = { title: string; content: string }
+type CreateResourceQuery = { publish?: string }
 
 export const POST = authenticatedRoute({
-    body: jsonBody<CreateArticleInput>(),
-    query: query<CreateArticleQuery>(),
+    body: jsonBody<CreateResourceInput>(),
+    query: query<CreateResourceQuery>(),
     handler: async (_request, { body, query: values, locals }) =>
-        articleService.create({
+        resourceService.create({
             userId: locals.userId,
             ...body,
             publish: values.publish === 'true',
@@ -191,17 +192,17 @@ export const POST = authenticatedRoute({
 ### 更新和删除
 
 ```ts
-type ArticleParams = { id: string }
-type UpdateArticleInput = { title?: string; content?: string }
+type ResourceParams = { id: string }
+type UpdateResourceInput = { title?: string; content?: string }
 
-export const PATCH = authenticatedRoute<ArticleParams, UpdateArticleInput>({
-    body: jsonBody<UpdateArticleInput>(),
-    handler: (_request, { params, body, locals }) => articleService.update(params.id, locals.userId, body),
+export const PATCH = authenticatedRoute<ResourceParams, UpdateResourceInput>({
+    body: jsonBody<UpdateResourceInput>(),
+    handler: (_request, { params, body, locals }) => resourceService.update(params.id, locals.userId, body),
 })
 
-export const DELETE = authenticatedRoute<ArticleParams>({
+export const DELETE = authenticatedRoute<ResourceParams>({
     handler: async (_request, { params, locals }) => {
-        await articleService.remove(params.id, locals.userId)
+        await resourceService.remove(params.id, locals.userId)
         return new Response(null, { status: 204 })
     },
 })
@@ -425,15 +426,41 @@ Factory 编译阶段（只执行一次）
 
 ## Zod 校验
 
+校验同样是可选能力。主包不依赖 Zod，也不会替用户自动注册任何校验器或 Filter。
+只有项目选择 Zod 时，才安装 `@next-route-kit/zod`。如果当前 Route 使用
+`{ code, msg, data }` 统一响应，就通过 `apiResponsePlugin` 映射可选适配器抛出的
+异常；不要在同一个 Route 上再注册独立的 `zodExceptionFilter`：
+
 ```ts
 import { z } from 'zod'
-import { createRoute, jsonBody } from 'next-route-kit'
-import { zodExceptionFilter, zodPipe } from '@next-route-kit/zod'
+import { apiResponsePlugin, createRoute, jsonBody } from 'next-route-kit'
+import { ZodValidationError, zodPipe } from '@next-route-kit/zod'
 
 const schema = z.object({ title: z.string().min(1) })
+const ResponseCode = {
+    SUCCESS: { code: 'OK', msg: '成功' },
+    INVALID_INPUT: { code: 'INVALID_INPUT', msg: '输入无效', status: 422 },
+    INTERNAL_ERROR: { code: 'INTERNAL_ERROR', msg: '系统错误' },
+} as const
+
 const route = createRoute({
     pipes: [zodPipe(schema, { appliesTo: 'body' })],
-    exceptionFilters: [zodExceptionFilter({ status: 422 })],
+    plugins: [
+        apiResponsePlugin({
+            success: ResponseCode.SUCCESS,
+            systemError: ResponseCode.INTERNAL_ERROR,
+            mapError: (error) => {
+                if (!(error instanceof ZodValidationError)) {
+                    return undefined
+                }
+
+                return {
+                    code: ResponseCode.INVALID_INPUT,
+                    data: { issues: error.issues },
+                }
+            },
+        }),
+    ],
 })
 
 export const POST = route({
@@ -441,6 +468,10 @@ export const POST = route({
     handler: (_request, { body }) => ({ title: body.title }),
 })
 ```
+
+如果 Route 不使用统一 API 外壳，才使用可选的 `zodExceptionFilter()`；它会返回
+Zod 适配器自己的 JSON 结构。一个 Route 只选择一个错误边界，避免两个 Filter
+产生互相竞争的响应契约。
 
 ## 这些 Route 保持原生
 

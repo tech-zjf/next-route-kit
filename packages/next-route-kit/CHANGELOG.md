@@ -4,8 +4,13 @@
 
 Initial public release of the Next.js App Router Route Factory, built-in body
 and query sources, JSON response serializer, exception filters, immutable
-scopes, and runtime compatibility diagnostics. Custom body/query resolvers keep
-their public argument location in pipe metadata, and response-aware interceptors
-can preserve native `Response` values. Input helpers are intentionally limited
-to `body` and `query`; params, headers, URL, and cookies remain on the native
-handler context and `Request`.
+scopes, runtime compatibility diagnostics, and the opt-in `{ code, msg, data }`
+API response plugin. `ApiException` carries application-owned business codes,
+while `ApiResponsePluginOptions.mapError` lets optional adapters map their own
+errors without coupling the main package to a validation library. Custom
+body/query resolvers keep their public argument location in pipe metadata, and
+response-aware interceptors can preserve native `Response` values. Input
+helpers are intentionally limited to `body` and `query`; params, headers, URL,
+and cookies remain on the native handler context and `Request`. Route parameter
+generics accept both type aliases and interface declarations without requiring a
+string index signature.

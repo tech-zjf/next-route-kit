@@ -79,6 +79,8 @@ const validateBody: Pipe = {
 const route = createRoute({ pipes: [validateBody] })
 ```
 
-Core 不绑定校验库。可选 Zod 适配包提供 `zodPipe()` 和
-`zodExceptionFilter()`；一个作用域同时校验 Body、Query 时使用
+Core 不绑定校验库。可选的 `@next-route-kit/zod` 包提供 `zodPipe()`；不使用统一
+响应外壳的 Route 还可以选择 `zodExceptionFilter()`。如果 Route 使用
+`apiResponsePlugin()`，应通过它的可选 `mapError` 映射 `ZodValidationError`，这样
+校验异常仍保持 `{ code, msg, data }` 契约。一个作用域同时校验 Body、Query 时使用
 `appliesTo` 区分目标。

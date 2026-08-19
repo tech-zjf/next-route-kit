@@ -201,6 +201,7 @@ export function executeRoutePipeline<TContext extends AnyRouteContext, TResult>(
     definition: RoutePipelineDefinition<TContext, TResult>,
     context: TContext,
     prepare?: RoutePreparation<TContext>,
+    prepareContext?: RouteContextPreparation<TContext>,
 ): Promise<Response> {
-    return new RoutePipeline(definition).execute(context, prepare)
+    return new RoutePipeline(definition).execute(context, prepare, prepareContext)
 }

@@ -89,6 +89,10 @@ const filter: ExceptionFilter<ApiContext> = {
 Filter 按 Route 局部到外层作用域尝试。返回 `undefined` 会交给下一个
 Filter。默认 Filter 处理内置 `HttpError` 和非法 JSON。
 
+默认 JSON 响应会包含 `HttpError.details`，统一响应插件也会把
+`ApiException.data` 放进响应。因此这两者都属于客户端可见数据，不要放入密钥或
+内部诊断信息；内部信息应交给 `onUnknownError` 或服务端日志。
+
 ## Response
 
 普通值使用 `jsonResponse()`。原生 `Response` 原样返回，流、文件、跳转和

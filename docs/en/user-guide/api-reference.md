@@ -13,6 +13,9 @@ const handler = route<TParams, TBody, TQuery, TResult>(options)
 `createRoute` returns a class-backed callable `Factory`. The result is a
 Next-compatible Handler for method exports.
 
+`TParams` can be a normal `type` alias or an `interface`. The default
+`RouteParams` shape is used when no route parameter type is provided.
+
 ## Route options
 
 ```ts
@@ -108,6 +111,10 @@ const apiRoute = createRoute({
         apiResponsePlugin({
             success: ResponseCode.SUCCESS,
             systemError: ResponseCode.INTERNAL_ERROR,
+            mapError: (error, context) => {
+                // Optional adapters can map their own errors here.
+                return undefined
+            },
         }),
     ],
 })
@@ -123,3 +130,20 @@ It emits `{ code, msg, data }`, catches unexpected errors with the configured
 `code`, `msg`, and an optional HTTP `status`; `ApiException` accepts optional
 `message`, `data`, `status`, and `cause` overrides. See the [API response guide](api-response.md)
 for the full contract and migration example.
+
+`mapError(error, context)` is optional and returns either `undefined` or an
+application-owned mapping:
+
+```ts
+type ApiResponseErrorMapping = {
+    code: ResponseCodeDefinition
+    status?: number
+    message?: string
+    data?: Readonly<Record<string, unknown>>
+}
+```
+
+This hook is the adapter boundary. For example, an optional Zod package can map
+`ZodValidationError` here without making `next-route-kit` depend on Zod. The
+standalone Zod ExceptionFilter remains a separate choice for routes that do not
+use the shared API envelope.

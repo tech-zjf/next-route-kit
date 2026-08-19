@@ -10,6 +10,7 @@ import type {
     RouteMeta,
     RouteMiddleware,
     RouteParams,
+    RouteParamsConstraint,
     RoutePlugin,
     RouteRuntime,
 } from '@next-route-kit/core'
@@ -19,16 +20,16 @@ export type DefaultRouteLocals = Record<string, never>
 
 export type AnyRouteContext<TLocals = DefaultRouteLocals> = RouteContext<any, Record<string, unknown>, TLocals>
 
-export interface NextRouteHandlerContext<TParams extends RouteParams = RouteParams> {
+export interface NextRouteHandlerContext<TParams extends RouteParamsConstraint<TParams> = RouteParams> {
     readonly params: Promise<TParams>
 }
 
-export interface NextRouteHandler<TParams extends RouteParams = RouteParams> {
+export interface NextRouteHandler<TParams extends RouteParamsConstraint<TParams> = RouteParams> {
     (request: Request): MaybePromise<Response>
     (request: Request, context: NextRouteHandlerContext<TParams>): MaybePromise<Response>
 }
 
-interface BaseRouteHandlerContext<TParams extends RouteParams, TLocals> {
+interface BaseRouteHandlerContext<TParams extends RouteParamsConstraint<TParams>, TLocals> {
     readonly params: TParams
     readonly locals: TLocals
     readonly meta: RouteMeta
@@ -37,18 +38,21 @@ interface BaseRouteHandlerContext<TParams extends RouteParams, TLocals> {
 type OptionalRouteValue<TValue, TKey extends string> = [TValue] extends [never] ? {} : { readonly [Key in TKey]: TValue }
 
 export type RouteHandlerContext<
-    TParams extends RouteParams = RouteParams,
+    TParams extends RouteParamsConstraint<TParams> = RouteParams,
     TBody = never,
     TQuery = never,
     TLocals = DefaultRouteLocals,
 > = BaseRouteHandlerContext<TParams, TLocals> & OptionalRouteValue<TBody, 'body'> & OptionalRouteValue<TQuery, 'query'>
 
-export type RouteHandler<TParams extends RouteParams = RouteParams, TBody = never, TQuery = never, TLocals = DefaultRouteLocals, TResult = unknown> = (
-    request: Request,
-    context: RouteHandlerContext<TParams, TBody, TQuery, TLocals>,
-) => MaybePromise<TResult>
+export type RouteHandler<
+    TParams extends RouteParamsConstraint<TParams> = RouteParams,
+    TBody = never,
+    TQuery = never,
+    TLocals = DefaultRouteLocals,
+    TResult = unknown,
+> = (request: Request, context: RouteHandlerContext<TParams, TBody, TQuery, TLocals>) => MaybePromise<TResult>
 
-export interface RouteInputContext<TParams extends RouteParams = RouteParams, TLocals = DefaultRouteLocals> {
+export interface RouteInputContext<TParams extends RouteParamsConstraint<TParams> = RouteParams, TLocals = DefaultRouteLocals> {
     readonly request: Request
     readonly params: TParams
     readonly locals: TLocals
@@ -58,7 +62,7 @@ export interface RouteInputContext<TParams extends RouteParams = RouteParams, TL
     readonly readText: () => Promise<string>
 }
 
-export type RouteInputResolver<TParams extends RouteParams = RouteParams, TValue = unknown, TLocals = DefaultRouteLocals> = (
+export type RouteInputResolver<TParams extends RouteParamsConstraint<TParams> = RouteParams, TValue = unknown, TLocals = DefaultRouteLocals> = (
     context: RouteInputContext<TParams, TLocals>,
 ) => MaybePromise<TValue>
 
@@ -70,7 +74,7 @@ export interface RouteFactoryConfig<TLocals = DefaultRouteLocals> extends RouteC
 }
 
 export interface RouteOptions<
-    TParams extends RouteParams = RouteParams,
+    TParams extends RouteParamsConstraint<TParams> = RouteParams,
     TBody = never,
     TQuery = never,
     TLocals = DefaultRouteLocals,
@@ -92,7 +96,7 @@ export interface RouteOptions<
 export interface RouteFactory<TLocals = DefaultRouteLocals> {
     readonly config: Readonly<RouteFactoryConfig<TLocals>>
 
-    <TParams extends RouteParams = RouteParams, TBody = never, TQuery = never, TResult = unknown>(
+    <TParams extends RouteParamsConstraint<TParams> = RouteParams, TBody = never, TQuery = never, TResult = unknown>(
         options: RouteOptions<TParams, TBody, TQuery, TLocals, TResult>,
     ): NextRouteHandler<TParams>
 

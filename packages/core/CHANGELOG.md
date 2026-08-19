@@ -4,3 +4,5 @@
 
 Initial public release of the framework-neutral Core contracts, immutable
 plugin registry, and deterministic request pipeline runtime.
+Route context parameter generics accept both type aliases and interface
+declarations without requiring a string index signature.

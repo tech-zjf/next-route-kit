@@ -39,6 +39,7 @@ import { ApiException, apiResponsePlugin, createRoute } from 'next-route-kit'
 const ResponseCode = {
     SUCCESS: { code: 'OK', msg: 'Success' },
     QUOTA_EXCEEDED: { code: 'QUOTA_EXCEEDED', msg: 'Quota exceeded', status: 409 },
+    INVALID_INPUT: { code: 'INVALID_INPUT', msg: 'Invalid input', status: 422 },
     INTERNAL_ERROR: { code: 'INTERNAL_ERROR', msg: 'Internal server error' },
 } as const
 
@@ -139,17 +140,17 @@ The first handler argument is the native Web `Request`. The second argument only
 contains the extra route context. There is no required `args` object and no
 ambiguous `state` property.
 
-### Detail: `GET /articles/:id`
+### Detail: `GET /resources/:id`
 
 ```ts
 import { authenticatedRoute } from '@/src/server/routes'
 
-type ArticleParams = { id: string }
+type ResourceParams = { id: string }
 
-export const GET = authenticatedRoute<ArticleParams>({
+export const GET = authenticatedRoute<ResourceParams>({
     handler: async (request, { params, locals }) => {
-        const article = await articleService.find(params.id, locals.userId)
-        return article ?? new Response(null, { status: 404 })
+        const resource = await resourceService.find(params.id, locals.userId)
+        return resource ?? new Response(null, { status: 404 })
     },
 })
 ```
@@ -160,7 +161,7 @@ export const GET = authenticatedRoute<ArticleParams>({
 export const GET = authenticatedRoute({
     handler: async (request, { locals }) => {
         const url = new URL(request.url)
-        return articleService.list({
+        return resourceService.list({
             userId: locals.userId,
             search: url.searchParams.get('search') ?? undefined,
             page: Number(url.searchParams.get('page') ?? 1),
@@ -174,14 +175,14 @@ export const GET = authenticatedRoute({
 ```ts
 import { jsonBody, query } from 'next-route-kit'
 
-type CreateArticleInput = { title: string; content: string }
-type CreateArticleQuery = { publish?: string }
+type CreateResourceInput = { title: string; content: string }
+type CreateResourceQuery = { publish?: string }
 
 export const POST = authenticatedRoute({
-    body: jsonBody<CreateArticleInput>(),
-    query: query<CreateArticleQuery>(),
+    body: jsonBody<CreateResourceInput>(),
+    query: query<CreateResourceQuery>(),
     handler: async (request, { body, query: values, locals }) =>
-        articleService.create({
+        resourceService.create({
             userId: locals.userId,
             ...body,
             publish: values.publish === 'true',
@@ -193,17 +194,17 @@ export const POST = authenticatedRoute({
 ### Update and delete
 
 ```ts
-type ArticleParams = { id: string }
-type UpdateArticleInput = { title?: string; content?: string }
+type ResourceParams = { id: string }
+type UpdateResourceInput = { title?: string; content?: string }
 
-export const PATCH = authenticatedRoute<ArticleParams, UpdateArticleInput>({
-    body: jsonBody<UpdateArticleInput>(),
-    handler: (_request, { params, body, locals }) => articleService.update(params.id, locals.userId, body),
+export const PATCH = authenticatedRoute<ResourceParams, UpdateResourceInput>({
+    body: jsonBody<UpdateResourceInput>(),
+    handler: (_request, { params, body, locals }) => resourceService.update(params.id, locals.userId, body),
 })
 
-export const DELETE = authenticatedRoute<ArticleParams>({
+export const DELETE = authenticatedRoute<ResourceParams>({
     handler: async (_request, { params, locals }) => {
-        await articleService.remove(params.id, locals.userId)
+        await resourceService.remove(params.id, locals.userId)
         return new Response(null, { status: 204 })
     },
 })
@@ -440,15 +441,42 @@ for the complete public type surface.
 
 ## Validation
 
+Validation is also opt-in. The main package has no Zod dependency and never
+registers a validator or filter for you. Use `@next-route-kit/zod` only when the
+application chooses Zod. If the route uses the `{ code, msg, data }` envelope,
+map the optional adapter error through `apiResponsePlugin` and do not register
+the standalone `zodExceptionFilter` on the same route:
+
 ```ts
 import { z } from 'zod'
-import { createRoute, jsonBody } from 'next-route-kit'
-import { zodExceptionFilter, zodPipe } from '@next-route-kit/zod'
+import { apiResponsePlugin, createRoute, jsonBody } from 'next-route-kit'
+import { ZodValidationError, zodPipe } from '@next-route-kit/zod'
 
 const schema = z.object({ title: z.string().min(1) })
+const ResponseCode = {
+    SUCCESS: { code: 'OK', msg: 'Success' },
+    INVALID_INPUT: { code: 'INVALID_INPUT', msg: 'Invalid input', status: 422 },
+    INTERNAL_ERROR: { code: 'INTERNAL_ERROR', msg: 'Internal server error' },
+} as const
+
 const route = createRoute({
     pipes: [zodPipe(schema, { appliesTo: 'body' })],
-    exceptionFilters: [zodExceptionFilter({ status: 422 })],
+    plugins: [
+        apiResponsePlugin({
+            success: ResponseCode.SUCCESS,
+            systemError: ResponseCode.INTERNAL_ERROR,
+            mapError: (error) => {
+                if (!(error instanceof ZodValidationError)) {
+                    return undefined
+                }
+
+                return {
+                    code: ResponseCode.INVALID_INPUT,
+                    data: { issues: error.issues },
+                }
+            },
+        }),
+    ],
 })
 
 export const POST = route({
@@ -456,6 +484,10 @@ export const POST = route({
     handler: (_request, { body }) => ({ title: body.title }),
 })
 ```
+
+Without the API envelope, the standalone `zodExceptionFilter()` is an optional
+alternative and returns its own adapter-specific JSON shape. Choose one error
+boundary for a route so two filters do not produce competing response contracts.
 
 ## Keep these routes native
 

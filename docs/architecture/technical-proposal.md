@@ -53,12 +53,12 @@ export const authenticatedRoute = apiRoute.extend({
 普通 Route Handler 保持 Request-first：
 
 ```ts
-// app/api/articles/[id]/route.ts
+// app/api/resources/[id]/route.ts
 export const GET = authenticatedRoute<{ id: string }>({
     handler: async (request, { params, locals }) => {
-        const article = await articleService.find(params.id, locals.userId)
+        const resource = await resourceService.find(params.id, locals.userId)
 
-        return article ?? new Response(null, { status: 404 })
+        return resource ?? new Response(null, { status: 404 })
     },
 })
 ```
@@ -81,7 +81,7 @@ export const GET = authenticatedRoute<{ id: string }>({
 export const GET = authenticatedRoute({
     handler: async (request, { locals }) => {
         const url = new URL(request.url)
-        return articleService.list({
+        return resourceService.list({
             userId: locals.userId,
             search: url.searchParams.get('search') ?? undefined,
         })
@@ -94,16 +94,16 @@ export const GET = authenticatedRoute({
 创建或更新 JSON API 可以声明需要自动解析的 Body：
 
 ```ts
-type CreateArticleInput = {
+type CreateResourceInput = {
     title: string
     content: string
 }
 
 export const POST = authenticatedRoute({
-    body: jsonBody<CreateArticleInput>(),
+    body: jsonBody<CreateResourceInput>(),
     handler: async (request, { body, locals }) => {
         const userAgent = request.headers.get('user-agent')
-        return articleService.create({ ...body, userId: locals.userId, userAgent })
+        return resourceService.create({ ...body, userId: locals.userId, userAgent })
     },
 })
 ```

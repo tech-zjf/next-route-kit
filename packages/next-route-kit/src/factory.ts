@@ -11,6 +11,7 @@ import {
     type RouteMeta,
     type RouteMiddleware,
     type RouteParams,
+    type RouteParamsConstraint,
     type RouteRuntime,
 } from '@next-route-kit/core'
 import { InputSource } from './input.js'
@@ -30,7 +31,7 @@ import type {
     RouteOptions,
 } from './types.js'
 
-type RouteArgumentDefinitions<TParams extends RouteParams, TLocals> = Readonly<{
+type RouteArgumentDefinitions<TParams extends RouteParamsConstraint<TParams>, TLocals> = Readonly<{
     readonly body?: RouteInputDefinition<unknown, TParams, TLocals>
     readonly query?: RouteInputDefinition<unknown, TParams, TLocals>
 }>
@@ -80,7 +81,7 @@ export class Factory<TLocals = DefaultRouteLocals> {
      * prepend so a route-local filter gets the first chance to handle errors.
      */
     extend(config: RouteFactoryConfig<TLocals>): Factory<TLocals> {
-        const child = Factory.resolveLayer(config)
+        const child = Factory.resolveLayer(config, config.runtime ?? this._config.runtime)
         const merged = Factory.merge(this._config, child)
         return Factory.fromResolved(merged)
     }
@@ -91,11 +92,11 @@ export class Factory<TLocals = DefaultRouteLocals> {
      * Plugin installation and pipeline compilation happen once here, not for
      * every request.
      */
-    create<TParams extends RouteParams = RouteParams, TBody = never, TQuery = never, TResult = unknown>(
+    create<TParams extends RouteParamsConstraint<TParams> = RouteParams, TBody = never, TQuery = never, TResult = unknown>(
         options: RouteOptions<TParams, TBody, TQuery, TLocals, TResult>,
     ): NextRouteHandler<TParams> {
         const argumentDefinitions = Factory.snapshotArgumentDefinitions<TParams, TBody, TQuery, TLocals>(options.body, options.query)
-        const routeConfig = Factory.resolveLayer(Factory.pickRouteConfig(options))
+        const routeConfig = Factory.resolveLayer(Factory.pickRouteConfig(options), options.runtime ?? this._config.runtime)
         const merged = Factory.merge(this._config, routeConfig)
         const pipeline = new RoutePipeline<AnyRouteContext<TLocals>, unknown>({
             middleware: merged.middleware,
@@ -172,7 +173,7 @@ export class Factory<TLocals = DefaultRouteLocals> {
     }
 
     private static normalize<TLocals>(config: RouteFactoryConfig<TLocals>): ResolvedRouteConfig<TLocals> {
-        const layer = Factory.resolveLayer(config)
+        const layer = Factory.resolveLayer(config, config.runtime)
         return Factory.freeze({
             ...layer,
             exceptionFilters: [...layer.exceptionFilters, defaultExceptionFilter()],
@@ -191,9 +192,9 @@ export class Factory<TLocals = DefaultRouteLocals> {
         })
     }
 
-    private static resolveLayer<TLocals>(config: RouteFactoryConfig<TLocals>): RouteConfigLayer<TLocals> {
-        const pluginRegistry = new RoutePluginRegistry(config.plugins)
-        const contributions = pluginRegistry.snapshot(config.runtime)
+    private static resolveLayer<TLocals>(config: RouteFactoryConfig<TLocals>, validationRuntime = config.runtime): RouteConfigLayer<TLocals> {
+        const pluginRegistry = new RoutePluginRegistry(config.plugins, validationRuntime)
+        const contributions = pluginRegistry.snapshot(validationRuntime)
         const responseSerializer = config.responseSerializer ?? config.response ?? contributions.responseSerializer
 
         return {
@@ -237,7 +238,7 @@ export class Factory<TLocals = DefaultRouteLocals> {
         })
     }
 
-    private static pickRouteConfig<TParams extends RouteParams, TBody, TQuery, TLocals, TResult>(
+    private static pickRouteConfig<TParams extends RouteParamsConstraint<TParams>, TBody, TQuery, TLocals, TResult>(
         options: RouteOptions<TParams, TBody, TQuery, TLocals, TResult>,
     ): RouteFactoryConfig<TLocals> {
         const plugins = [...(options.plugins ?? []), ...(options.use ?? [])]
@@ -255,7 +256,7 @@ export class Factory<TLocals = DefaultRouteLocals> {
         }
     }
 
-    private static async resolveArgument<TParams extends RouteParams, TLocals>(
+    private static async resolveArgument<TParams extends RouteParamsConstraint<TParams>, TLocals>(
         definition: RouteInputDefinition<unknown, TParams, TLocals>,
         context: RouteInputContext<TParams, TLocals>,
     ): Promise<unknown> {
@@ -266,7 +267,7 @@ export class Factory<TLocals = DefaultRouteLocals> {
         return definition(context)
     }
 
-    private static resolveArgumentMetadata<TParams extends RouteParams, TLocals>(
+    private static resolveArgumentMetadata<TParams extends RouteParamsConstraint<TParams>, TLocals>(
         definitions: RouteArgumentDefinitions<TParams, TLocals>,
     ): ArgumentMetadata | undefined {
         const fields = Object.fromEntries(
@@ -305,7 +306,7 @@ export class Factory<TLocals = DefaultRouteLocals> {
         })
     }
 
-    private static snapshotArgumentDefinitions<TParams extends RouteParams, TBody, TQuery, TLocals>(
+    private static snapshotArgumentDefinitions<TParams extends RouteParamsConstraint<TParams>, TBody, TQuery, TLocals>(
         body: RouteInputDefinition<TBody, TParams, TLocals> | undefined,
         query: RouteInputDefinition<TQuery, TParams, TLocals> | undefined,
     ): RouteArgumentDefinitions<TParams, TLocals> {
@@ -315,7 +316,7 @@ export class Factory<TLocals = DefaultRouteLocals> {
         })
     }
 
-    private static createHandlerContext<TParams extends RouteParams, TBody, TQuery, TLocals>(
+    private static createHandlerContext<TParams extends RouteParamsConstraint<TParams>, TBody, TQuery, TLocals>(
         context: AnyRouteContext<TLocals>,
         definitions: RouteArgumentDefinitions<TParams, TLocals>,
     ): RouteHandlerContext<TParams, TBody, TQuery, TLocals> {
@@ -352,7 +353,7 @@ export class Factory<TLocals = DefaultRouteLocals> {
         const callable =
             mode === 'root'
                 ? (childConfig: RouteFactoryConfig<TLocals> = {}) => new Factory(childConfig)
-                : <TParams extends RouteParams = RouteParams, TBody = never, TQuery = never, TResult = unknown>(
+                : <TParams extends RouteParamsConstraint<TParams> = RouteParams, TBody = never, TQuery = never, TResult = unknown>(
                       options: RouteOptions<TParams, TBody, TQuery, TLocals, TResult>,
                   ) => owner.create(options)
 

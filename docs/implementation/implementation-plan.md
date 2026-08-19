@@ -195,7 +195,7 @@ Status: completed locally
 退出证据（2026-08-18）：
 
 - 完整 `pnpm release:check` 通过；
-- 50 个 package tests 通过；
+- 全部 package tests 通过；
 - 4 个公开包的实际 tarball 和 external consumer 通过；
 - Next.js 15.5.23、16.3.1 production 和 Turbopack development smoke 通过；
 - git diff --check、ESLint、typecheck、build、Prettier 全部通过；

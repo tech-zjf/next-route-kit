@@ -4,7 +4,16 @@ export type RouteRuntime = 'nodejs' | 'edge'
 
 export type RuntimeSupport = RouteRuntime | 'both'
 
-export type RouteParams = Record<string, string | string[] | undefined>
+export type RouteParamValue = string | string[] | undefined
+
+/** Default dynamic route parameter shape used when a route has no custom type. */
+export type RouteParams = Record<string, RouteParamValue>
+
+/**
+ * Accepts both type aliases and interfaces while preserving Next's parameter
+ * value constraint on every declared property.
+ */
+export type RouteParamsConstraint<T extends object> = object & { [K in keyof T]: RouteParamValue }
 
 export interface RouteMeta {
     readonly method?: string
@@ -28,7 +37,11 @@ export interface ArgumentMetadata {
  * Next adapter receive these values as named context properties instead of
  * reading args directly.
  */
-export interface RouteContext<TParams extends RouteParams = RouteParams, TArgs = Readonly<Record<string, unknown>>, TLocals = Record<string, never>> {
+export interface RouteContext<
+    TParams extends RouteParamsConstraint<TParams> = RouteParams,
+    TArgs = Readonly<Record<string, unknown>>,
+    TLocals = Record<string, never>,
+> {
     request: Request
     params: TParams
     args: TArgs

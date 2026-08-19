@@ -4,7 +4,7 @@ export { ApiExceptionFilter, ApiResponseInterceptor, ApiResponsePlugin, apiRespo
 export { InputSource, body, defineInputSource, jsonBody, query, textBody } from './input.js'
 export type { InputSourceResolver, QueryInput, RouteInputDefinition, RouteInputLocation } from './input.js'
 export type { ApiExceptionOptions, ResponseCodeDefinition } from './errors.js'
-export type { ApiResponseData, ApiResponseEnvelope, ApiResponsePluginOptions } from './api-response.js'
+export type { ApiResponseData, ApiResponseEnvelope, ApiResponseErrorMapping, ApiResponsePluginOptions } from './api-response.js'
 export type {
     AnyRouteContext,
     DefaultRouteLocals,
@@ -46,7 +46,9 @@ export type {
     RouteHandler as CoreRouteHandler,
     RouteMeta,
     RouteMiddleware,
+    RouteParamValue,
     RouteParams,
+    RouteParamsConstraint,
     RoutePlugin,
     RoutePluginContribution,
     RouteRuntime,

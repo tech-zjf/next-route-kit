@@ -4,6 +4,7 @@ import { ApiException, apiResponsePlugin, createRoute, type ApiResponseData } fr
 const ResponseCode = {
     SUCCESS: { code: 'OK', msg: 'Success' },
     QUOTA_EXCEEDED: { code: 'QUOTA_EXCEEDED', msg: 'Quota exceeded', status: 409 },
+    INVALID_INPUT: { code: 'INVALID_INPUT', msg: 'Invalid input', status: 422 },
     INTERNAL_ERROR: { code: 'INTERNAL_ERROR', msg: 'Internal server error' },
 } as const
 
@@ -69,7 +70,7 @@ describe('api response contract', () => {
             },
         })
 
-        const response = await GET(new Request('https://example.test/articles'))
+        const response = await GET(new Request('https://example.test/resources'))
 
         expect(response.status).toBe(500)
         expect(await response.json()).toEqual({
@@ -78,6 +79,38 @@ describe('api response contract', () => {
             data: {},
         })
         expect(reported).toBe(unexpected)
+    })
+
+    it('maps optional-adapter errors without coupling the response plugin to that adapter', async () => {
+        const validationError = new Error('validation details')
+        const GET = createRoute({
+            plugins: [
+                apiResponsePlugin({
+                    success: ResponseCode.SUCCESS,
+                    systemError: ResponseCode.INTERNAL_ERROR,
+                    mapError: (error) =>
+                        error === validationError
+                            ? {
+                                  code: ResponseCode.INVALID_INPUT,
+                                  data: { fields: ['name'] },
+                              }
+                            : undefined,
+                }),
+            ],
+        })({
+            handler: () => {
+                throw validationError
+            },
+        })
+
+        const response = await GET(new Request('https://example.test/resources'))
+
+        expect(response.status).toBe(422)
+        expect(await response.json()).toEqual({
+            code: 'INVALID_INPUT',
+            msg: 'Invalid input',
+            data: { fields: ['name'] },
+        })
     })
 
     it('lets the application map list results into an object without weakening the contract', async () => {
@@ -93,7 +126,7 @@ describe('api response contract', () => {
             handler: () => [{ id: 'resource-1' }],
         })
 
-        const response = await GET(new Request('https://example.test/articles'))
+        const response = await GET(new Request('https://example.test/resources'))
 
         expect(await response.json()).toEqual({
             code: 'OK',

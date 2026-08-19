@@ -18,6 +18,14 @@ type AppLocals = {
     userId?: string
 }
 
+interface DetailParams {
+    id: string
+}
+
+interface InvalidDetailParams {
+    id: number
+}
+
 type ResourceParams = {
     tenantId: string
 }
@@ -36,6 +44,15 @@ function nextParams<TParams>(params: TParams): { params: Promise<TParams> } {
 }
 
 describe('createRoute', () => {
+    it('keeps Next-compatible values in custom route parameter types', () => {
+        const route = createRoute()
+
+        // @ts-expect-error Route params must use Next's string-based dynamic segment values.
+        route<InvalidDetailParams>({
+            handler: () => ({ ok: true }),
+        })
+    })
+
     it('keeps a detail route close to native Next and passes Request first', async () => {
         const route = createRoute<AppLocals>({
             middleware: [
@@ -52,7 +69,7 @@ describe('createRoute', () => {
         expect(route).toBeInstanceOf(Factory)
         expect(Object.isFrozen(route)).toBe(true)
 
-        const GET = route<{ id: string }>({
+        const GET = route<DetailParams>({
             handler: async (request, { params, locals }) => ({
                 method: request.method,
                 id: params.id,
@@ -61,7 +78,7 @@ describe('createRoute', () => {
         })
 
         const response = await GET(
-            new Request('https://example.test/articles/sample-id', { headers: { 'x-request-id': 'request-sample' } }),
+            new Request('https://example.test/resources/sample-id', { headers: { 'x-request-id': 'request-sample' } }),
             nextParams({ id: 'sample-id' }),
         )
 
@@ -247,7 +264,7 @@ describe('createRoute', () => {
             }),
         })
 
-        const response = await GET(new Request('https://example.test/articles/sample-id?search=route-kit'), nextParams({ id: 'sample-id' }))
+        const response = await GET(new Request('https://example.test/resources/sample-id?search=route-kit'), nextParams({ id: 'sample-id' }))
 
         expect(await response.json()).toEqual({ id: 'sample-id', search: 'route-kit' })
     })
@@ -258,7 +275,7 @@ describe('createRoute', () => {
             handler: (_request, { query: values }) => values,
         })
 
-        const response = await GET(new Request('https://example.test/articles?tag=a&tag=b'))
+        const response = await GET(new Request('https://example.test/resources?tag=a&tag=b'))
 
         expect(await response.json()).toEqual({ tag: ['a', 'b'] })
     })
@@ -316,14 +333,14 @@ describe('createRoute', () => {
 
         const GET = route({
             handler: () => {
-                throw new HttpError({ status: 422, code: 'INVALID_ARTICLE', message: 'invalid article' })
+                throw new HttpError({ status: 422, code: 'INVALID_RESOURCE', message: 'invalid resource' })
             },
         })
 
-        const response = await GET(new Request('https://example.test/articles'))
+        const response = await GET(new Request('https://example.test/resources'))
 
         expect(response.status).toBe(422)
-        expect(await response.json()).toEqual({ code: 'INVALID_ARTICLE', requestId: 'req-filter' })
+        expect(await response.json()).toEqual({ code: 'INVALID_RESOURCE', requestId: 'req-filter' })
     })
 
     it('keeps Factory scopes immutable and composes extend configuration', async () => {

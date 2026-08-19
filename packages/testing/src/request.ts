@@ -1,11 +1,11 @@
-import type { MaybePromise, NextRouteHandler, NextRouteHandlerContext, RouteParams } from 'next-route-kit'
+import type { MaybePromise, NextRouteHandler, NextRouteHandlerContext, RouteParams, RouteParamsConstraint } from 'next-route-kit'
 
 const DEFAULT_BASE_URL = 'https://example.test/'
 
 export type QueryValue = string | number | boolean
 export type QueryInit = Readonly<Record<string, QueryValue | readonly QueryValue[]>>
 
-interface RequestBuilderOptions<TParams extends RouteParams> {
+interface RequestBuilderOptions<TParams extends RouteParamsConstraint<TParams>> {
     readonly method?: string
     readonly headers?: HeadersInit
     readonly body?: BodyInit
@@ -13,7 +13,7 @@ interface RequestBuilderOptions<TParams extends RouteParams> {
     readonly baseUrl?: string | URL
 }
 
-interface RequestBuilderState<TParams extends RouteParams> {
+interface RequestBuilderState<TParams extends RouteParamsConstraint<TParams>> {
     readonly url?: URL
     readonly method?: string
     readonly headers?: Headers
@@ -21,16 +21,16 @@ interface RequestBuilderState<TParams extends RouteParams> {
     readonly params?: TParams
 }
 
-export interface RouteTestRequest<TParams extends RouteParams = RouteParams> {
+export interface RouteTestRequest<TParams extends RouteParamsConstraint<TParams> = RouteParams> {
     readonly request: Request
     readonly context: NextRouteHandlerContext<TParams>
 }
 
-export type RouteTestHandler<TParams extends RouteParams = RouteParams> =
+export type RouteTestHandler<TParams extends RouteParamsConstraint<TParams> = RouteParams> =
     NextRouteHandler<TParams> | ((request: Request, context: NextRouteHandlerContext<TParams>) => MaybePromise<Response>)
 
 /** Immutable fluent builder for Web API Requests and Next Route Handler params. */
-export class RequestBuilder<TParams extends RouteParams = RouteParams> {
+export class RequestBuilder<TParams extends RouteParamsConstraint<TParams> = RouteParams> {
     private readonly url: URL
     private readonly requestMethod: string
     private readonly requestHeaders: Headers
@@ -45,11 +45,11 @@ export class RequestBuilder<TParams extends RouteParams = RouteParams> {
         this.routeParams = snapshotParams(options.params ?? ({} as TParams))
     }
 
-    static get<TParams extends RouteParams = RouteParams>(url: string | URL = DEFAULT_BASE_URL): RequestBuilder<TParams> {
+    static get<TParams extends RouteParamsConstraint<TParams> = RouteParams>(url: string | URL = DEFAULT_BASE_URL): RequestBuilder<TParams> {
         return new RequestBuilder<TParams>(url).method('GET')
     }
 
-    static post<TParams extends RouteParams = RouteParams>(url: string | URL = DEFAULT_BASE_URL): RequestBuilder<TParams> {
+    static post<TParams extends RouteParamsConstraint<TParams> = RouteParams>(url: string | URL = DEFAULT_BASE_URL): RequestBuilder<TParams> {
         return new RequestBuilder<TParams>(url).method('POST')
     }
 
@@ -125,7 +125,7 @@ export class RequestBuilder<TParams extends RouteParams = RouteParams> {
         return this.clone({ body: value, headers })
     }
 
-    params<TNextParams extends RouteParams>(params: TNextParams): RequestBuilder<TNextParams> {
+    params<TNextParams extends RouteParamsConstraint<TNextParams>>(params: TNextParams): RequestBuilder<TNextParams> {
         return this.clone<TNextParams>({ params })
     }
 
@@ -158,7 +158,7 @@ export class RequestBuilder<TParams extends RouteParams = RouteParams> {
         }
     }
 
-    private clone<TNextParams extends RouteParams = TParams>(state: RequestBuilderState<TNextParams>): RequestBuilder<TNextParams> {
+    private clone<TNextParams extends RouteParamsConstraint<TNextParams> = TParams>(state: RequestBuilderState<TNextParams>): RequestBuilder<TNextParams> {
         const options: RequestBuilderOptions<TNextParams> = {
             method: state.method ?? this.requestMethod,
             headers: state.headers ?? new Headers(this.requestHeaders),
@@ -182,7 +182,7 @@ export function request(url: string | URL = DEFAULT_BASE_URL): RequestBuilder {
     return new RequestBuilder(url)
 }
 
-export async function invokeRoute<TParams extends RouteParams = RouteParams>(
+export async function invokeRoute<TParams extends RouteParamsConstraint<TParams> = RouteParams>(
     handler: RouteTestHandler<TParams>,
     input: Request | RequestBuilder<TParams> | RouteTestRequest<TParams>,
     context?: NextRouteHandlerContext<TParams>,
@@ -191,7 +191,9 @@ export async function invokeRoute<TParams extends RouteParams = RouteParams>(
     return handler(routeRequest.request, context ?? routeRequest.context)
 }
 
-function toRouteTestRequest<TParams extends RouteParams>(input: Request | RequestBuilder<TParams> | RouteTestRequest<TParams>): RouteTestRequest<TParams> {
+function toRouteTestRequest<TParams extends RouteParamsConstraint<TParams>>(
+    input: Request | RequestBuilder<TParams> | RouteTestRequest<TParams>,
+): RouteTestRequest<TParams> {
     if (input instanceof RequestBuilder) {
         return input.buildRouteRequest()
     }
@@ -221,12 +223,12 @@ function appendQueryValue(searchParams: URLSearchParams, name: string, value: Qu
     searchParams.set(name, String(value))
 }
 
-function snapshotParams<TParams extends RouteParams>(params: TParams): TParams {
+function snapshotParams<TParams extends RouteParamsConstraint<TParams>>(params: TParams): TParams {
     return Object.freeze(
         Object.fromEntries(Object.entries(params).map(([key, value]) => [key, Array.isArray(value) ? Object.freeze([...value]) : value])),
     ) as TParams
 }
 
-function isRouteTestRequest<TParams extends RouteParams>(input: unknown): input is RouteTestRequest<TParams> {
+function isRouteTestRequest<TParams extends RouteParamsConstraint<TParams>>(input: unknown): input is RouteTestRequest<TParams> {
     return typeof input === 'object' && input !== null && 'request' in input && 'context' in input
 }

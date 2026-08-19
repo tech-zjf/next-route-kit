@@ -144,6 +144,42 @@ number, string, `message`, or `msg` field.
 Unexpected errors are converted to `systemError`; their internal message is not
 sent to the client. Use `onUnknownError` for logging, tracing, or Sentry.
 
+## Optional validation adapters
+
+The response plugin does not depend on or install a validation library. If the
+application chooses the optional Zod adapter, map its error into the same
+envelope with `mapError`:
+
+```ts
+import { apiResponsePlugin, createRoute } from 'next-route-kit'
+import { ZodValidationError, zodPipe } from '@next-route-kit/zod'
+
+const apiRoute = createRoute({
+    pipes: [zodPipe(schema, { appliesTo: 'body' })],
+    plugins: [
+        apiResponsePlugin({
+            success: ResponseCode.SUCCESS,
+            systemError: ResponseCode.INTERNAL_ERROR,
+            mapError: (error) => {
+                if (!(error instanceof ZodValidationError)) {
+                    return undefined
+                }
+
+                return {
+                    code: ResponseCode.INVALID_INPUT,
+                    data: { issues: error.issues },
+                }
+            },
+        }),
+    ],
+})
+```
+
+`@next-route-kit/zod` is optional. `zodExceptionFilter()` is another optional,
+standalone error boundary for routes that do not use the API envelope; do not
+register it together with the envelope filter unless the application intentionally
+accepts two different response contracts.
+
 ## What maps from an existing Next API
 
 | Repeated code in a hand-written Route                     | Shared contract version                                                |

@@ -30,8 +30,38 @@ export const POST = route({
 more than one schema.
 
 `zodExceptionFilter()` implements `ExceptionFilter` and maps
-`ZodValidationError` to JSON. The default status is `400`; applications that
-use `422` can configure `{ status: 422 }`.
+`ZodValidationError` to an adapter-specific JSON response. The default status is
+`400`; applications that use `422` can configure `{ status: 422 }`. It is
+optional and should be used as the route's error boundary only when the route is
+not already using `apiResponsePlugin()`.
+
+For a route that uses the shared `{ code, msg, data }` envelope, keep this filter
+out and map the error through the main package's generic `mapError` option:
+
+```ts
+import { apiResponsePlugin, createRoute } from 'next-route-kit'
+import { ZodValidationError, zodPipe } from '@next-route-kit/zod'
+
+const route = createRoute({
+    pipes: [zodPipe(schema, { appliesTo: 'body' })],
+    plugins: [
+        apiResponsePlugin({
+            success: ResponseCode.SUCCESS,
+            systemError: ResponseCode.INTERNAL_ERROR,
+            mapError: (error) => {
+                if (!(error instanceof ZodValidationError)) {
+                    return undefined
+                }
+
+                return {
+                    code: ResponseCode.INVALID_INPUT,
+                    data: { issues: error.issues },
+                }
+            },
+        }),
+    ],
+})
+```
 
 The adapter is opt-in, keeps Core validator-agnostic, and uses Zod's async parse
 API so async refinements work.

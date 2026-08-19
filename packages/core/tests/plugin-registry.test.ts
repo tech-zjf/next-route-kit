@@ -158,6 +158,29 @@ describe('RoutePluginRegistry', () => {
         expect(() => registry.snapshot('nodejs')).not.toThrow()
     })
 
+    it('checks runtime compatibility before installing an incompatible plugin', () => {
+        let installCount = 0
+
+        expect(
+            () =>
+                new RoutePluginRegistry(
+                    [
+                        {
+                            name: 'node-only',
+                            runtime: 'nodejs',
+                            install() {
+                                installCount += 1
+                                return {}
+                            },
+                        },
+                    ],
+                    'edge',
+                ),
+        ).toThrow(RuntimeIncompatiblePluginError)
+
+        expect(installCount).toBe(0)
+    })
+
     it('exposes renamed plugin stages in the snapshot', () => {
         const snapshot = new RoutePluginRegistry([
             {

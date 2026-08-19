@@ -18,6 +18,14 @@ export interface ApiResponseEnvelope<TData extends ApiResponseData = ApiResponse
     readonly data: TData
 }
 
+/** A caller-supplied mapping for an error owned by an optional adapter. */
+export interface ApiResponseErrorMapping {
+    readonly code: ResponseCodeDefinition
+    readonly status?: number
+    readonly message?: string
+    readonly data?: ApiResponseData
+}
+
 export interface ApiResponsePluginOptions<TContext extends AnyRouteContext = AnyRouteContext> {
     /** The code emitted when a handler completes successfully. */
     readonly success: ResponseCodeDefinition
@@ -27,6 +35,8 @@ export interface ApiResponsePluginOptions<TContext extends AnyRouteContext = Any
     readonly mapData?: (value: unknown, context: TContext) => MaybePromise<ApiResponseData>
     /** Map structured exception details to the object stored in `data`. */
     readonly mapErrorData?: (error: unknown, context: TContext) => MaybePromise<ApiResponseData>
+    /** Map an application or optional-adapter error without coupling this package to it. */
+    readonly mapError?: (error: unknown, context: TContext) => MaybePromise<ApiResponseErrorMapping | undefined>
     /** Log or report unexpected errors without exposing their internals to clients. */
     readonly onUnknownError?: (error: unknown, context: TContext) => MaybePromise<void>
 }
@@ -61,6 +71,19 @@ export class ApiExceptionFilter<TContext extends AnyRouteContext = AnyRouteConte
     constructor(private readonly options: ApiResponsePluginOptions<TContext>) {}
 
     async catch(error: unknown, context: TContext): Promise<Response> {
+        const mappedError = await this.options.mapError?.(error, context)
+
+        if (mappedError) {
+            return Response.json(
+                {
+                    code: mappedError.code.code,
+                    msg: mappedError.message ?? mappedError.code.msg,
+                    data: toApiResponseData(mappedError.data),
+                } satisfies ApiResponseEnvelope,
+                { status: mappedError.status ?? mappedError.code.status ?? 400 },
+            )
+        }
+
         const knownError = error instanceof ApiException || error instanceof HttpError
 
         if (!knownError) {
