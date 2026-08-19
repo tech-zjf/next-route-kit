@@ -26,7 +26,7 @@ pnpm release:check
 pnpm release:status
 ```
 
-`release:check` runs lint, typecheck, all tests, production builds, packed
+`release:check` runs lint, high-severity production dependency auditing, typecheck, all tests, production builds, packed
 external-consumer verification, Next.js 15/16 Turbopack smoke tests, and the
 formatting check. `release:status` confirms that Changesets has no unaccounted
 package changes. The initial empty marker is intentionally not a version bump;
@@ -57,10 +57,12 @@ Then:
 - [ ] Dispatch the `Release` workflow with `confirm=true`.
 - [ ] Approve the `npm-release` environment.
 
-The workflow runs the same release gate, publishes the four packages through
-Changesets, creates package tags, and pushes those tags to the repository. It
-does not run automatically on every push and does not bypass `main` branch
-protection by pushing source commits.
+The workflow runs the same release gate and publishes the four packages through
+Changesets. The final `release:tags` step then verifies, creates when necessary,
+pushes, and re-checks one annotated tag per published package. It refuses to
+overwrite a tag that points to a different commit. The workflow does not run
+automatically on every push and does not bypass `main` branch protection by
+pushing source commits.
 
 ## Subsequent releases
 

@@ -11,6 +11,11 @@ compatibility. The fixtures live under `apps/` and consume the local
 | `apps/next15-fixture` |                15.5.23 |    pass    |    pass    |     pass     |        pass         |
 | `apps/next16-fixture` |                 16.3.1 |    pass    |    pass    |     pass     |        pass         |
 
+The package-only CI surface is also checked on Node.js `18.18.0`, `20`, `22`,
+and `24`. This matrix intentionally excludes the Next.js fixtures because the
+framework versions have their own Node.js support ranges; the fixture matrix
+continues to run on the repository's primary Node.js 22 validation runtime.
+
 Each fixture contains:
 
 - `/api/node` with `runtime = 'nodejs'`;

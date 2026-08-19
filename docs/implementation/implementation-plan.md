@@ -175,7 +175,7 @@ Status: completed
 
 ## Phase 7 — 发布门禁
 
-Status: completed locally
+Status: completed; release workflow hardening in progress
 
 必须按顺序执行：
 
@@ -192,7 +192,7 @@ Status: completed locally
 11. npm pack 内容和安装边界复核；
 12. 记录远程 CI、npm scope 和 Release workflow 状态。
 
-退出证据（2026-08-18）：
+退出证据（2026-08-19）：
 
 - 完整 `pnpm release:check` 通过；
 - 全部 package tests 通过；
@@ -200,9 +200,13 @@ Status: completed locally
 - Next.js 15.5.23、16.3.1 production 和 Turbopack development smoke 通过；
 - git diff --check、ESLint、typecheck、build、Prettier 全部通过；
 - Next.js 15/16 已知框架 warning 已记录在兼容性矩阵。
+- GitHub CI 已通过；
+- 四个 `0.1.0` 包已发布到 npm；
+- 四个 package-version tag 已存在于 GitHub；
+- 发布环境和 `NPM_TOKEN` 已配置并完成一次受保护发布。
 
-本阶段只完成本地发布候选，不执行 commit、push 或 npm publish。远程 CI、npm
-scope 和 Release workflow 仍需维护者外部操作。
+当前维护收尾：CI 和 Release workflow 已升级到 Node.js 24-compatible Actions，
+并将 tag 同步改为幂等校验脚本；待本次修改推送后由远程 CI 验证。
 
 ## Checkpoint 模板
 

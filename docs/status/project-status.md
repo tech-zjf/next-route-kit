@@ -6,11 +6,11 @@ Last updated: 2026-08-19
 
 ```text
 Project: next-route-kit
-Phase: local release candidate complete; maintainer publication steps pending
-Status: full local release gate passed
-Product gate: package is useful only for repeated JSON CRUD/Auth Route policy
-Next checkpoint: run remote CI, confirm npm name/scope, then maintainer decides whether to publish
-Publication: no commit, push, or npm publish performed in this cycle
+Phase: 0.1.0 public release complete; release workflow hardening in progress
+Status: npm release, CI, and production compatibility gates passed
+Product gate: package is useful for repeated JSON CRUD/Auth Route policy
+Next checkpoint: push workflow hardening and verify Node.js 24-compatible Actions plus release tag sync
+Publication: four packages published at 0.1.0; four package-version tags verified on GitHub
 ```
 
 ## 本轮已经完成
@@ -108,21 +108,13 @@ Next 16 报告 Edge Runtime deprecated。这些不是 package 失败，详见
 
 ## 外部发布事项
 
-本地代码和门禁已经完成，但以下事项需要维护者的外部操作：
+0.1.0 的 npm scope、发布环境、CI、Release workflow 和 package-version tags
+已经完成并核验。后续只需要维护者推送本轮 workflow hardening，并等待新的 CI
+验证结果。
 
-1. commit 并 push 到 main；
-2. 观察 GitHub CI matrix；
-3. 确认 next-route-kit、@next-route-kit scope 的 npm 名称和权限；
-4. 配置 NPM_TOKEN 和受保护的 npm-release environment；
-5. 维护者显式批准 Release workflow；
-6. 发布后将 npm 版本、tag、CI URL 写回本文件。
-
-这些操作本轮没有执行。
-
-补充审计记录：只读查询确认四个公开包目前尚未出现在 npm registry；`pnpm audit --prod`
-报告的 3 个 high、2 个 moderate 漏洞全部来自私有 Next 15 fixture 的 `next` 传递依赖
-（`sharp`/`postcss`），四个公开包的实际 tarball 不包含 Next 或这些依赖。该问题不阻断
-npm 包发布，但在仓库层面仍应在后续升级 fixture 或明确接受风险前保持记录。
+仓库通过 pnpm override 将 Next.js fixture 使用的 `sharp` 和 `postcss` 锁到已修复版本，
+并将 `pnpm audit:prod` 纳入发布门禁；四个公开包的实际 tarball 仍不包含 Next.js
+或这些 fixture 依赖。
 
 ## 产品成功标准
 
@@ -152,6 +144,18 @@ JSON CRUD/Auth Route，比较改造前后：
 架构变化同步修改 docs/architecture/decisions/ 下的 ADR。
 
 ## Activity log
+
+### 2026-08-19 — Release workflow hardening
+
+- 将 CI 和 Release workflow 的 `actions/checkout`、`actions/setup-node`、
+  `pnpm/action-setup` 升级到 Node.js 24-compatible major versions；
+- 增加 Node.js 18.18、20、22、24 的公开包构建、类型和测试矩阵；
+- 用 `scripts/sync-release-tags.mjs` 替换不具备远端校验的裸 `git push --tags`；
+- tag 同步脚本会幂等复用已存在 tag，创建缺失的 annotated tag，拒绝覆盖指向其他提交的
+  远端 tag，并在推送后再次验证；
+- 本轮修改待推送后验证远程 CI；npm 用户不需要升级或重新安装已发布的 0.1.0 包。
+- 修复仓库生产依赖审计中来自 Next.js 15 fixture 的 `sharp`/`postcss` 漏洞，并将高危审计
+  纳入 `release:check`。
 
 ### 2026-08-19 — Optional adapter response boundary and release review
 

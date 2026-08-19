@@ -13,13 +13,13 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
             - name: Setup pnpm
-              uses: pnpm/action-setup@v4
+              uses: pnpm/action-setup@v6
               with:
                   version: 10.26.0
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v6
               with:
                   node-version: 22
                   cache: pnpm
@@ -53,13 +53,13 @@ jobs:
                       port: 3116
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
             - name: Setup pnpm
-              uses: pnpm/action-setup@v4
+              uses: pnpm/action-setup@v6
               with:
                   version: 10.26.0
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v6
               with:
                   node-version: 22
                   cache: pnpm
@@ -116,13 +116,13 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
             - name: Setup pnpm
-              uses: pnpm/action-setup@v4
+              uses: pnpm/action-setup@v6
               with:
                   version: 10.26.0
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v6
               with:
                   node-version: 22
                   cache: pnpm
@@ -131,18 +131,52 @@ jobs:
             - name: Verify packed packages in an external consumer
               run: pnpm verify:packed
 
+    runtime-compatibility:
+        name: Node.js ${{ matrix.node-version }} package compatibility
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                node-version: ['18.18.0', '20', '22', '24']
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v6
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v6
+              with:
+                  version: 10.26.0
+            - name: Setup Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version: ${{ matrix.node-version }}
+                  cache: pnpm
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+            - name: Build published package surface
+              run: |
+                  pnpm --filter '@next-route-kit/testing...' build
+                  pnpm --filter '@next-route-kit/zod...' build
+            - name: Typecheck published package surface
+              run: |
+                  pnpm --filter '@next-route-kit/testing...' typecheck
+                  pnpm --filter '@next-route-kit/zod...' typecheck
+            - name: Test published package surface
+              run: |
+                  pnpm --filter '@next-route-kit/testing...' test
+                  pnpm --filter '@next-route-kit/zod...' test
+
     turbopack-development:
         name: Turbopack development compatibility
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
             - name: Setup pnpm
-              uses: pnpm/action-setup@v4
+              uses: pnpm/action-setup@v6
               with:
                   version: 10.26.0
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v6
               with:
                   node-version: 22
                   cache: pnpm

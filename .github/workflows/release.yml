@@ -25,18 +25,18 @@ jobs:
             name: npm-release
         steps:
             - name: Checkout release commit
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
               with:
                   ref: main
                   fetch-depth: 0
 
             - name: Setup pnpm
-              uses: pnpm/action-setup@v4
+              uses: pnpm/action-setup@v6
               with:
                   version: 10.26.0
 
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v6
               with:
                   node-version: 22
                   cache: pnpm
@@ -56,11 +56,11 @@ jobs:
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-            - name: Publish packages and create tags
+            - name: Publish packages
               run: pnpm release:publish
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
                   NPM_CONFIG_PROVENANCE: true
 
-            - name: Push release tags
-              run: git push origin --tags
+            - name: Synchronize release tags
+              run: pnpm release:tags
