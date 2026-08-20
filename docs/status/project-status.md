@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
 
 ## Current state
 
@@ -144,6 +144,14 @@ JSON CRUD/Auth Route，比较改造前后：
 架构变化同步修改 docs/architecture/decisions/ 下的 ADR。
 
 ## Activity log
+
+### 2026-08-20 — Enterprise boundary hardening
+
+- 阻止 Interceptor 重复调用 `next()` 导致 Handler 重复执行，并公开对应诊断错误；
+- 统一响应插件在未配置 Reporter 时默认记录未知异常，Reporter 自身失败也不会破坏系统错误响应；
+- Zod 适配器默认不保留被拒绝的原始输入，只暴露稳定的 `code`、`message`、`path` 字段；
+- 增加并发请求 locals 隔离、重复 Interceptor、默认异常报告和敏感校验数据回归覆盖；
+- Body 大小策略、Schema-bound input 和公共泛型重构仍需独立 API 设计，不在本轮叠加未经验证的抽象。
 
 ### 2026-08-19 — Release workflow hardening
 

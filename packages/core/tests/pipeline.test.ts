@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { executeRoutePipeline, forbidden, RoutePipeline, type RouteContext } from '../src/index.js'
+import { DuplicateInterceptorNextError, executeRoutePipeline, forbidden, RoutePipeline, type RouteContext } from '../src/index.js'
 
 function createContext(): RouteContext {
     return {
@@ -200,6 +200,34 @@ describe('executeRoutePipeline', () => {
 
         expect(events).toEqual(['guard', 'interceptor:before', 'prepare', 'pipe', 'handler', 'interceptor:after'])
         expect(await response.json()).toEqual({ ok: true })
+    })
+
+    it('rejects an interceptor that calls next more than once without repeating the handler', async () => {
+        let handlerCalls = 0
+
+        await expect(
+            executeRoutePipeline(
+                {
+                    interceptors: [
+                        {
+                            name: 'duplicate-next',
+                            async intercept(_context, next) {
+                                await next()
+                                return next()
+                            },
+                        },
+                    ],
+                    responseSerializer: jsonSerializer,
+                    handler() {
+                        handlerCalls += 1
+                        return { ok: true }
+                    },
+                },
+                createContext(),
+            ),
+        ).rejects.toBeInstanceOf(DuplicateInterceptorNextError)
+
+        expect(handlerCalls).toBe(1)
     })
 
     it('hydrates adapter context before middleware and guards', async () => {

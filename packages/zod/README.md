@@ -29,6 +29,12 @@ export const POST = route({
 `{ appliesTo: 'body' }` or `{ appliesTo: 'query' }` when one scope declares
 more than one schema.
 
+Validation errors expose only stable `code`, `message`, and `path` issue fields.
+Rejected input is not retained by default because request values may contain
+credentials or personal data. For a controlled debugging environment only,
+`zodPipe(schema, { captureInput: true })` retains it on
+`ZodValidationError.input`.
+
 `zodExceptionFilter()` implements `ExceptionFilter` and maps
 `ZodValidationError` to an adapter-specific JSON response. The default status is
 `400`; applications that use `422` can configure `{ status: 422 }`. It is

@@ -74,6 +74,9 @@ const envelope: Interceptor<ApiContext> = {
 如果下游 Handler 返回原生 `Response`，应直接透传，否则状态码、响应头和响应体会被
 错误地包进统一 JSON 响应。
 
+Interceptor 和 Middleware 一样只能调用一次 `next()`。重复调用会在 Handler 再次
+执行前抛出 `DuplicateInterceptorNextError`。
+
 ## Exception Filter
 
 ```ts

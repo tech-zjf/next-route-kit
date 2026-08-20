@@ -26,7 +26,11 @@ export interface ZodValidationIssue {
     readonly code?: string
     readonly message: string
     readonly path: readonly PropertyKey[]
-    readonly [key: string]: unknown
+}
+
+export interface ZodValidationErrorOptions {
+    /** Retain the rejected value for debugging. Disabled by default because inputs may contain secrets. */
+    readonly captureInput?: boolean
 }
 
 export class ZodValidationError extends Error {
@@ -34,11 +38,11 @@ export class ZodValidationError extends Error {
     readonly input: unknown
     readonly metadata: ArgumentMetadata
 
-    constructor(error: unknown, input: unknown, metadata: ArgumentMetadata) {
+    constructor(error: unknown, input: unknown, metadata: ArgumentMetadata, options: ZodValidationErrorOptions = {}) {
         super('Input validation failed', { cause: error })
         this.name = 'ZodValidationError'
         this.issues = normalizeIssues(error)
-        this.input = input
+        this.input = options.captureInput ? input : undefined
         this.metadata = metadata
     }
 }
@@ -47,12 +51,15 @@ export interface ZodPipeOptions {
     readonly name?: string
     /** Limit this pipe to one resolved argument, for example body or query. */
     readonly appliesTo?: ArgumentMetadata['type']
+    /** Retain rejected input on ZodValidationError. Disabled by default because inputs may contain secrets. */
+    readonly captureInput?: boolean
 }
 
 /** A Pipe that validates one resolved route argument with a Zod schema. */
 export class ZodPipe<TSchema extends ZodSchemaLike = ZodSchemaLike> implements Pipe<unknown, ZodOutput<TSchema>, AnyRouteContext> {
     readonly name: string
     private readonly appliesTo: ArgumentMetadata['type'] | undefined
+    private readonly captureInput: boolean
 
     constructor(
         readonly schema: TSchema,
@@ -60,6 +67,7 @@ export class ZodPipe<TSchema extends ZodSchemaLike = ZodSchemaLike> implements P
     ) {
         this.name = options.name ?? 'zod-validation'
         this.appliesTo = options.appliesTo
+        this.captureInput = options.captureInput ?? false
     }
 
     async transform(value: unknown, metadata: ArgumentMetadata): Promise<ZodOutput<TSchema>> {
@@ -73,7 +81,7 @@ export class ZodPipe<TSchema extends ZodSchemaLike = ZodSchemaLike> implements P
             return result.data as ZodOutput<TSchema>
         }
 
-        throw new ZodValidationError(result.error, value, metadata)
+        throw new ZodValidationError(result.error, value, metadata, { captureInput: this.captureInput })
     }
 }
 
@@ -142,7 +150,6 @@ function normalizeIssues(error: unknown): readonly ZodValidationIssue[] {
             const code = record && typeof record.code === 'string' ? record.code : undefined
 
             return Object.freeze({
-                ...(record ?? {}),
                 ...(code ? { code } : {}),
                 message,
                 path: Object.freeze(path),

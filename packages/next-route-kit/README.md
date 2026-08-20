@@ -99,7 +99,9 @@ Plain object results and `ApiException` values are converted to one
 `{ code, msg, data }` envelope. `data` is always an object. The code constants
 remain application-owned, so a client can handle common auth/quota codes
 globally and feature-specific codes locally. Native `Response` values pass
-through unchanged.
+through unchanged. Unexpected errors use the configured system response and are
+reported with `console.error` unless `onUnknownError` supplies an application
+reporter.
 
 Validation is not built into this response contract. The main package does not
 depend on Zod or register a Zod filter. If an application installs the optional

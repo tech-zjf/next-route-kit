@@ -64,6 +64,10 @@ This gives a frontend one stable discriminator for global auth/quota handling an
 feature-specific dialogs. See the [API response guide](docs/en/user-guide/api-response.md)
 for migration patterns and list/error examples.
 
+Unknown errors use the configured system response and are reported with
+`console.error` by default. Configure `onUnknownError` to replace that reporter
+with the application's logging, tracing, or error-monitoring integration.
+
 ## Install
 
 ```bash

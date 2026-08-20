@@ -71,6 +71,9 @@ Code before `next()` is the enter phase; code after `await next()` is the
 exit phase. If the downstream handler returns a native `Response`, preserve it
 so its status, headers, and body remain unchanged.
 
+An Interceptor, like Middleware, may call `next()` only once. A duplicate call
+throws `DuplicateInterceptorNextError` before the Handler can run again.
+
 ## ExceptionFilter
 
 ```ts

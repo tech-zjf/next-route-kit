@@ -135,8 +135,10 @@ if (payload.code === ResponseCode.QUOTA_EXCEEDED.code) {
 页面再处理自己的业务码。不需要再猜服务端返回的是数字还是字符串，也不需要兼容
 `message` 和 `msg` 两套字段。
 
-未识别的异常会统一映射为 `systemError`，内部错误信息不会返回给客户端。可以用
-`onUnknownError` 接入日志、链路追踪或 Sentry。
+未识别的异常会统一映射为 `systemError`，内部错误信息不会返回给客户端。默认会用
+`console.error` 记录，避免 500 静默发生；配置 `onUnknownError` 可以替换为日志、链路
+追踪或 Sentry。自定义 Reporter 自身失败时，插件会记录原异常和 Reporter 异常，并
+继续返回配置好的系统错误响应。
 
 ## 可选的校验适配器
 

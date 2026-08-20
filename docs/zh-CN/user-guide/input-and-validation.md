@@ -84,3 +84,7 @@ Core 不绑定校验库。可选的 `@next-route-kit/zod` 包提供 `zodPipe()`�
 `apiResponsePlugin()`，应通过它的可选 `mapError` 映射 `ZodValidationError`，这样
 校验异常仍保持 `{ code, msg, data }` 契约。一个作用域同时校验 Body、Query 时使用
 `appliesTo` 区分目标。
+
+Zod 适配器只暴露标准化的 `code`、`message`、`path` 字段。Body 和 Query 可能包含
+密钥或个人数据，因此默认不在异常中保留被拒绝的原始输入。`captureInput: true` 只应
+作为受控调试环境的显式选项，不应在生产请求日志中启用。

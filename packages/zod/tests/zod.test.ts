@@ -33,7 +33,41 @@ describe('zod adapter', () => {
             expect(error).toBeInstanceOf(ZodValidationError)
             expect(Object.isFrozen((error as ZodValidationError).issues)).toBe(true)
             expect((error as ZodValidationError).issues[0]?.path).toEqual(['id'])
+            expect((error as ZodValidationError).input).toBeUndefined()
         }
+    })
+
+    it('retains rejected input only when explicitly requested', async () => {
+        const rejectedInput = { password: 'secret' }
+        const pipe = zodPipe(z.object({ id: z.string() }), { captureInput: true })
+
+        try {
+            await pipe.transform(rejectedInput, { type: 'body', name: 'json-body' })
+        } catch (error) {
+            expect(error).toBeInstanceOf(ZodValidationError)
+            expect((error as ZodValidationError).input).toBe(rejectedInput)
+        }
+    })
+
+    it('exposes only stable, client-safe issue fields', () => {
+        const error = new ZodValidationError(
+            {
+                issues: [
+                    {
+                        code: 'custom',
+                        message: 'password is invalid',
+                        path: ['password'],
+                        input: 'secret',
+                        internalRule: 'credential-policy-v2',
+                    },
+                ],
+            },
+            { password: 'secret' },
+            { type: 'body', name: 'json-body' },
+        )
+
+        expect(error.input).toBeUndefined()
+        expect(error.issues).toEqual([{ code: 'custom', message: 'password is invalid', path: ['password'] }])
     })
 
     it('maps validation failures to a configurable JSON response', async () => {

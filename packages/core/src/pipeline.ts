@@ -1,4 +1,4 @@
-import { DuplicateMiddlewareNextError, MissingResponseSerializerError, forbidden } from './errors.js'
+import { DuplicateInterceptorNextError, DuplicateMiddlewareNextError, MissingResponseSerializerError, forbidden } from './errors.js'
 import type {
     AnyRouteContext,
     ArgumentMetadata,
@@ -143,7 +143,16 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
             return nextStage()
         }
 
-        return current.intercept(context, () => this.runInterceptors(context, nextStage, index + 1))
+        let nextCalled = false
+
+        return current.intercept(context, () => {
+            if (nextCalled) {
+                throw new DuplicateInterceptorNextError(current.name)
+            }
+
+            nextCalled = true
+            return this.runInterceptors(context, nextStage, index + 1)
+        })
     }
 
     private async runGuards(context: TContext): Promise<Response | undefined> {

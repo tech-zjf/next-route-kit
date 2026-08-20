@@ -142,7 +142,10 @@ handler for its own codes without guessing whether the server returned a
 number, string, `message`, or `msg` field.
 
 Unexpected errors are converted to `systemError`; their internal message is not
-sent to the client. Use `onUnknownError` for logging, tracing, or Sentry.
+sent to the client. By default they are reported with `console.error` so a 500
+is not silent. Configure `onUnknownError` to replace that reporter with logging,
+tracing, or Sentry. If the custom reporter fails, the plugin logs both failures
+and still returns the configured system response.
 
 ## Optional validation adapters
 

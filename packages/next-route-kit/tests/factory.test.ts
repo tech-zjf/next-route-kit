@@ -90,6 +90,43 @@ describe('createRoute', () => {
         })
     })
 
+    it('isolates locals across concurrent requests', async () => {
+        let releaseFirstRequest: (() => void) | undefined
+        const firstRequestCanFinish = new Promise<void>((resolve) => {
+            releaseFirstRequest = resolve
+        })
+        const route = createRoute<AppLocals>({
+            middleware: [
+                {
+                    name: 'request-id',
+                    use(context, next) {
+                        context.locals.requestId = context.request.headers.get('x-request-id') ?? 'generated'
+                        return next()
+                    },
+                },
+            ],
+        })
+        const GET = route({
+            async handler(_request, { locals }) {
+                if (locals.requestId === 'request-first') {
+                    await firstRequestCanFinish
+                } else {
+                    releaseFirstRequest?.()
+                }
+
+                return { requestId: locals.requestId }
+            },
+        })
+
+        const [firstResponse, secondResponse] = await Promise.all([
+            GET(new Request('https://example.test/resources/first', { headers: { 'x-request-id': 'request-first' } })),
+            GET(new Request('https://example.test/resources/second', { headers: { 'x-request-id': 'request-second' } })),
+        ])
+
+        expect(await firstResponse.json()).toEqual({ requestId: 'request-first' })
+        expect(await secondResponse.json()).toEqual({ requestId: 'request-second' })
+    })
+
     it('resolves only declared body and query values into the handler context', async () => {
         const route = createRoute<AppLocals>({
             guards: [

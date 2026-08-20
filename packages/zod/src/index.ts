@@ -8,4 +8,5 @@ export type {
     ZodSafeParseSuccess,
     ZodSchemaLike,
     ZodValidationIssue,
+    ZodValidationErrorOptions,
 } from './zod.js'

@@ -37,7 +37,7 @@ export interface ApiResponsePluginOptions<TContext extends AnyRouteContext = Any
     readonly mapErrorData?: (error: unknown, context: TContext) => MaybePromise<ApiResponseData>
     /** Map an application or optional-adapter error without coupling this package to it. */
     readonly mapError?: (error: unknown, context: TContext) => MaybePromise<ApiResponseErrorMapping | undefined>
-    /** Log or report unexpected errors without exposing their internals to clients. */
+    /** Report unexpected errors without exposing them to clients. Defaults to console.error when omitted. */
     readonly onUnknownError?: (error: unknown, context: TContext) => MaybePromise<void>
 }
 
@@ -87,7 +87,7 @@ export class ApiExceptionFilter<TContext extends AnyRouteContext = AnyRouteConte
         const knownError = error instanceof ApiException || error instanceof HttpError
 
         if (!knownError) {
-            await this.options.onUnknownError?.(error, context)
+            await this.reportUnknownError(error, context)
         }
 
         const code = knownError ? getErrorCode(error) : this.options.systemError
@@ -102,6 +102,19 @@ export class ApiExceptionFilter<TContext extends AnyRouteContext = AnyRouteConte
             } satisfies ApiResponseEnvelope,
             { status: knownError ? getErrorStatus(error) : 500 },
         )
+    }
+
+    private async reportUnknownError(error: unknown, context: TContext): Promise<void> {
+        if (!this.options.onUnknownError) {
+            reportUnknownErrorToConsole(error, context)
+            return
+        }
+
+        try {
+            await this.options.onUnknownError(error, context)
+        } catch (reportingError) {
+            reportUnknownErrorToConsole(error, context, reportingError)
+        }
     }
 }
 
@@ -169,4 +182,18 @@ function getErrorData(error: ApiException | HttpError): ApiResponseData {
 
 function getErrorStatus(error: ApiException | HttpError): number {
     return error.status
+}
+
+function reportUnknownErrorToConsole(error: unknown, context: AnyRouteContext, reportingError?: unknown): void {
+    const route = {
+        method: context.meta.method,
+        pathname: context.meta.pathname,
+    }
+
+    if (reportingError === undefined) {
+        console.error('[next-route-kit] Unhandled route error', route, error)
+        return
+    }
+
+    console.error('[next-route-kit] Unknown-error reporter failed', route, { error, reportingError })
 }

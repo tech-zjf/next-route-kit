@@ -63,6 +63,9 @@ export const POST = apiRoute({
 [统一 API 响应指南](docs/zh-CN/user-guide/api-response.md)，其中包含通用的迁移和列表、
 异常示例。
 
+未知异常会返回配置好的系统错误，并默认通过 `console.error` 记录。配置
+`onUnknownError` 可以替换为项目自己的日志、链路追踪或错误监控集成。
+
 ## 安装
 
 ```bash

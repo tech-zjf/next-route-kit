@@ -86,3 +86,8 @@ Core stays validator-agnostic. The optional `@next-route-kit/zod` package provid
 uses `apiResponsePlugin()`, map `ZodValidationError` through its optional
 `mapError` callback instead so validation errors keep the `{ code, msg, data }`
 contract. Use `appliesTo` when a scope has both body and query schemas.
+
+The Zod adapter exposes only normalized `code`, `message`, and `path` issue
+fields. It does not retain rejected input by default because bodies and queries
+may contain secrets or personal data. `captureInput: true` is an explicit
+debugging opt-in and should not be enabled for production request logging.

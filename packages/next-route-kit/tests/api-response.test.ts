@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiException, apiResponsePlugin, createRoute, type ApiResponseData } from '../src/index.js'
 
 const ResponseCode = {
@@ -7,6 +7,10 @@ const ResponseCode = {
     INVALID_INPUT: { code: 'INVALID_INPUT', msg: 'Invalid input', status: 422 },
     INTERNAL_ERROR: { code: 'INTERNAL_ERROR', msg: 'Internal server error' },
 } as const
+
+afterEach(() => {
+    vi.restoreAllMocks()
+})
 
 function createApiRoute(options: { readonly onUnknownError?: (error: unknown) => void } = {}) {
     return createRoute({
@@ -79,6 +83,46 @@ describe('api response contract', () => {
             data: {},
         })
         expect(reported).toBe(unexpected)
+    })
+
+    it('reports unexpected errors to the console when no reporter is configured', async () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+        const unexpected = new Error('database connection details')
+        const GET = createApiRoute()({
+            handler: () => {
+                throw unexpected
+            },
+        })
+
+        const response = await GET(new Request('https://example.test/resources'))
+
+        expect(response.status).toBe(500)
+        expect(consoleError).toHaveBeenCalledWith('[next-route-kit] Unhandled route error', { method: 'GET', pathname: '/resources' }, unexpected)
+    })
+
+    it('preserves the system response and logs when a custom reporter fails', async () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+        const unexpected = new Error('database connection details')
+        const reportingError = new Error('reporting service unavailable')
+        const GET = createApiRoute({
+            onUnknownError() {
+                throw reportingError
+            },
+        })({
+            handler: () => {
+                throw unexpected
+            },
+        })
+
+        const response = await GET(new Request('https://example.test/resources'))
+
+        expect(response.status).toBe(500)
+        expect(await response.json()).toMatchObject({ code: 'INTERNAL_ERROR' })
+        expect(consoleError).toHaveBeenCalledWith(
+            '[next-route-kit] Unknown-error reporter failed',
+            { method: 'GET', pathname: '/resources' },
+            { error: unexpected, reportingError },
+        )
     })
 
     it('maps optional-adapter errors without coupling the response plugin to that adapter', async () => {

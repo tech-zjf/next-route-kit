@@ -19,7 +19,9 @@ dependency. The first adapter exposes:
 
 - `ZodPipe` / `zodPipe(schema)` for async validation and parsed-output
   replacement;
-- `ZodValidationError` with normalized, immutable issues and input metadata;
+- `ZodValidationError` with normalized, immutable, client-safe issues and
+  argument metadata; rejected input is redacted unless `captureInput` is
+  explicitly enabled;
 - `ZodExceptionFilter` / `zodExceptionFilter(options)` for configurable JSON
   responses when the application wants a standalone Zod error shape.
 

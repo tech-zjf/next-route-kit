@@ -57,6 +57,13 @@ export class DuplicateMiddlewareNextError extends Error {
     }
 }
 
+export class DuplicateInterceptorNextError extends Error {
+    constructor(name: string) {
+        super(`Route interceptor "${name}" called next() more than once`)
+        this.name = 'DuplicateInterceptorNextError'
+    }
+}
+
 export class RuntimeIncompatiblePluginError extends Error {
     readonly pluginName: string
     readonly pluginRuntime: string
