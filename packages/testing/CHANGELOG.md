@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [3e8a3f6]
+    - next-route-kit@0.1.1
+
 ## 0.1.0 — 2026-08-18
 
 Initial public release of the runner-neutral Route Handler request builder,
