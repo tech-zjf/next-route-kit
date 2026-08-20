@@ -151,6 +151,7 @@ JSON CRUD/Auth Route，比较改造前后：
 - 统一响应插件在未配置 Reporter 时默认记录未知异常，Reporter 自身失败也不会破坏系统错误响应；
 - Zod 适配器默认不保留被拒绝的原始输入，只暴露稳定的 `code`、`message`、`path` 字段；
 - 增加并发请求 locals 隔离、重复 Interceptor、默认异常报告和敏感校验数据回归覆盖；
+- 将 Vitest 的 Vite 工具链锁定到支持 Node.js 18.18 的 6.4.3，避免宽松 Peer Dependency 漂移到仅支持 Node.js 20+ 的 Vite 7；
 - Body 大小策略、Schema-bound input 和公共泛型重构仍需独立 API 设计，不在本轮叠加未经验证的抽象。
 
 ### 2026-08-19 — Release workflow hardening
