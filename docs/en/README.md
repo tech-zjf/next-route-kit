@@ -27,6 +27,14 @@ npm install -D @next-route-kit/testing    # optional
 - [Migration](user-guide/migration.md)
 - [Troubleshooting](user-guide/troubleshooting.md)
 
+## Pilot users wanted
+
+The package is still early. If your App Router project has repeated
+authentication, validation, error mapping, or response-envelope code, try it on
+one route first. Then [open a feedback issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose)
+with your Next.js version, runtime, migrated route, and any confusing API or
+documentation. Negative feedback is welcome too.
+
 ## The basic model
 
 ```ts

@@ -27,6 +27,13 @@ npm install -D @next-route-kit/testing    # 可选
 - [迁移](user-guide/migration.md)
 - [问题排查](user-guide/troubleshooting.md)
 
+## 招募试用用户
+
+项目还处在早期。如果你的 App Router 项目里重复了鉴权、校验、错误映射或响应
+封装，欢迎先在一条接口上试用，再通过[反馈 Issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose)
+告诉我 Next.js 版本、runtime、迁移的接口，以及 API 或文档哪里让你困惑。直接的
+负面反馈也同样有帮助。
+
 ## 基本模型
 
 ```ts

@@ -74,7 +74,76 @@ npm install @next-route-kit/zod zod       # 可选：Zod 校验
 npm install -D @next-route-kit/testing    # 可选：测试辅助
 ```
 
-## 快速开始
+## 5 分钟试用
+
+先从一个 JSON 接口开始。不需要改造整个项目，也不需要在
+`next.config.ts` 注册任何内容。
+
+```ts
+// app/api/resources/route.ts
+import { createRoute, jsonBody } from 'next-route-kit'
+
+type CreateResource = { name: string }
+const route = createRoute()
+
+export const POST = route({
+    body: jsonBody<CreateResource>(),
+    handler: (_request, { body }) => ({
+        resource: { name: body.name },
+    }),
+})
+```
+
+`request` 仍然是原生 Web `Request`，返回值也仍然走 Next.js 原生 Route Handler
+边界。如果只有这一条接口也没有变得更清晰，可以停在这里；这个包的目标是减少
+重复策略，不是增加额外仪式感。
+
+## 一次迁移一条接口
+
+特殊接口继续保持原生，只抽取重复的请求级策略：
+
+```ts
+// 之前：每个接口都重复相同的策略
+export async function POST(request: Request) {
+    try {
+        const user = await authenticate(request)
+        const body = CreateSchema.parse(await request.json())
+        return Response.json({ data: await resourceService.create(user.id, body) })
+    } catch (error) {
+        return mapApplicationError(error)
+    }
+}
+```
+
+```ts
+// 之后：共享策略放到作用域，业务流程留在接口里
+import { createRoute, jsonBody } from 'next-route-kit'
+
+const apiRoute = createRoute({
+    guards: [authenticationGuard],
+    pipes: [validateCreateResource],
+    exceptionFilters: [applicationErrorFilter],
+})
+
+export const POST = apiRoute({
+    body: jsonBody<CreateResource>(),
+    handler: (_request, { body, locals }) => resourceService.create(locals.userId, body),
+})
+```
+
+迁移可以渐进进行。具体的策略映射，以及应该继续使用普通 Handler 的场景，见
+[迁移指南](docs/zh-CN/user-guide/migration.md)。
+
+## 招募试用用户
+
+项目还处在早期，真实项目比合成示例更有价值。如果你的 Next.js App Router
+项目里重复了鉴权、校验、错误映射或响应封装，欢迎先迁移一条接口，再通过
+[反馈 Issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose) 告诉我结果。
+
+请尽量提供 Next.js 版本、runtime、迁移的接口形态，以及 API 或文档哪里让你困惑。
+直接说一句“这个不值得用”也同样有帮助。
+
+## 建立共享策略作用域
 
 在普通服务端模块中创建共享策略。不需要修改 `next.config.ts`，包也不会扫描
 文件系统。

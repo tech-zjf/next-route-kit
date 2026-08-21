@@ -8,22 +8,38 @@ Migration is incremental. Existing native handlers do not need to change.
 
 ```ts
 export async function POST(request: Request) {
-    const body = await request.json()
-    return Response.json({ name: body.name })
+    try {
+        const user = await authenticate(request)
+        const body = CreateSchema.parse(await request.json())
+        const resource = await resourceService.create(user.id, body)
+
+        return Response.json({ data: resource })
+    } catch (error) {
+        return mapApplicationError(error)
+    }
 }
 ```
 
 ## After
 
 ```ts
-import { jsonBody } from 'next-route-kit'
-import { route } from '@/src/server/routes'
+import { createRoute, jsonBody } from 'next-route-kit'
 
-export const POST = route({
+const apiRoute = createRoute({
+    guards: [authenticationGuard],
+    pipes: [validateCreateResource],
+    exceptionFilters: [applicationErrorFilter],
+})
+
+export const POST = apiRoute({
     body: jsonBody<{ name: string }>(),
-    handler: (_request, { body }) => ({ name: body.name }),
+    handler: (_request, { body, locals }) => resourceService.create(locals.userId, body),
 })
 ```
+
+The example uses application-owned `authenticate`, `authenticationGuard`, `validateCreateResource`, and
+`applicationErrorFilter` components. The package does not choose your auth,
+schema library, response codes, or service layer for you.
 
 ## Move only repeated policy
 

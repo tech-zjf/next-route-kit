@@ -10,6 +10,33 @@ Start with the [English user guide](https://github.com/tech-zjf/next-route-kit/b
 [简体中文指南](https://github.com/tech-zjf/next-route-kit/blob/main/docs/zh-CN/README.md),
 or the [repository README](https://github.com/tech-zjf/next-route-kit#readme).
 
+## 5-minute quick start
+
+Try one JSON endpoint first. No `next.config.ts` registration is required.
+
+```ts
+// app/api/resources/route.ts
+import { createRoute, jsonBody } from 'next-route-kit'
+
+const route = createRoute()
+
+export const POST = route({
+    body: jsonBody<{ name: string }>(),
+    handler: (_request, { body }) => ({ resource: { name: body.name } }),
+})
+```
+
+`request` remains the native Web `Request`, and special endpoints can stay plain
+Next.js handlers. Migrate one route at a time; see the [migration guide](https://github.com/tech-zjf/next-route-kit/blob/main/docs/en/user-guide/migration.md)
+for a before/after example.
+
+## Pilot users wanted
+
+If your App Router project repeats authentication, validation, error mapping, or
+response envelopes, try this on one route and [open a feedback issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose).
+Please include your Next.js version, runtime, migrated route, and any confusing
+API or documentation. A clear “this is not worth it” is useful feedback too.
+
 ## Native route API
 
 ```ts

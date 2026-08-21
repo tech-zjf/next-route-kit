@@ -8,22 +8,38 @@
 
 ```ts
 export async function POST(request: Request) {
-    const body = await request.json()
-    return Response.json({ name: body.name })
+    try {
+        const user = await authenticate(request)
+        const body = CreateSchema.parse(await request.json())
+        const resource = await resourceService.create(user.id, body)
+
+        return Response.json({ data: resource })
+    } catch (error) {
+        return mapApplicationError(error)
+    }
 }
 ```
 
 ## 迁移后
 
 ```ts
-import { jsonBody } from 'next-route-kit'
-import { route } from '@/src/server/routes'
+import { createRoute, jsonBody } from 'next-route-kit'
 
-export const POST = route({
+const apiRoute = createRoute({
+    guards: [authenticationGuard],
+    pipes: [validateCreateResource],
+    exceptionFilters: [applicationErrorFilter],
+})
+
+export const POST = apiRoute({
     body: jsonBody<{ name: string }>(),
-    handler: (_request, { body }) => ({ name: body.name }),
+    handler: (_request, { body, locals }) => resourceService.create(locals.userId, body),
 })
 ```
+
+示例中的 `authenticate`、`authenticationGuard`、`validateCreateResource` 和
+`applicationErrorFilter` 都由业务项目自己实现。这个包不会替你决定鉴权方式、
+Schema 库、响应码或 Service 层。
 
 ## 只迁移重复策略
 

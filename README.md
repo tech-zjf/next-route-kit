@@ -76,7 +76,78 @@ npm install @next-route-kit/zod zod       # optional validation
 npm install -D @next-route-kit/testing    # optional test helpers
 ```
 
-## Quick start
+## Try it in 5 minutes
+
+Start with one JSON endpoint. You do not need to migrate the whole application or
+register anything in `next.config.ts`.
+
+```ts
+// app/api/resources/route.ts
+import { createRoute, jsonBody } from 'next-route-kit'
+
+type CreateResource = { name: string }
+const route = createRoute()
+
+export const POST = route({
+    body: jsonBody<CreateResource>(),
+    handler: (_request, { body }) => ({
+        resource: { name: body.name },
+    }),
+})
+```
+
+`request` stays the native Web `Request`, and the returned value uses the normal
+Next.js Route Handler boundary. If this one route does not get easier to read,
+stop here; the package is meant to remove repeated policy, not add ceremony.
+
+## Migrate one route at a time
+
+Keep special endpoints native and move only repeated request-level policy:
+
+```ts
+// before: every route repeats the same policy
+export async function POST(request: Request) {
+    try {
+        const user = await authenticate(request)
+        const body = CreateSchema.parse(await request.json())
+        return Response.json({ data: await resourceService.create(user.id, body) })
+    } catch (error) {
+        return mapApplicationError(error)
+    }
+}
+```
+
+```ts
+// after: shared policy lives in the scope; business flow stays local
+import { createRoute, jsonBody } from 'next-route-kit'
+
+const apiRoute = createRoute({
+    guards: [authenticationGuard],
+    pipes: [validateCreateResource],
+    exceptionFilters: [applicationErrorFilter],
+})
+
+export const POST = apiRoute({
+    body: jsonBody<CreateResource>(),
+    handler: (_request, { body, locals }) => resourceService.create(locals.userId, body),
+})
+```
+
+The migration is incremental. See the [migration guide](docs/en/user-guide/migration.md)
+for the policy-by-policy mapping and the cases that should remain plain handlers.
+
+## Pilot users wanted
+
+This project is still early, and real projects are more useful than another
+synthetic example. If your Next.js App Router project has repeated auth,
+validation, error mapping, or response-envelope code, try migrating one route
+and [open a feedback issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose).
+
+Please include your Next.js version, runtime, the route shape you migrated, and
+where the API or documentation felt awkward. A blunt “this is not worth it” is
+also useful feedback.
+
+## Build a shared route scope
 
 Put shared policy in an ordinary server module. Nothing is registered in
 `next.config.ts` and the package does not scan the filesystem.
