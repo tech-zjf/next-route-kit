@@ -11,9 +11,10 @@ const verifyOnly = process.argv.includes('--verify-only')
 
 const packages = await readPublishablePackages()
 const releaseCommit = await git(['rev-parse', 'HEAD'])
-const expectedTags = packages.map(({ name, version }) => ({
+const expectedTags = packages.map(({ name, version, manifestPath }) => ({
     name,
     version,
+    manifestPath,
     tag: `${name}@${version}`,
 }))
 
@@ -22,13 +23,21 @@ if (expectedTags.length === 0) {
 }
 
 const tagsToPush = []
+const tagsToVerify = []
 
 for (const releaseTag of expectedTags) {
     const localCommit = await localTagCommit(releaseTag.tag)
     const remoteCommit = await remoteTagCommit(releaseTag.tag)
 
     if (remoteCommit !== null && remoteCommit !== releaseCommit) {
-        throw new Error(`Remote tag ${releaseTag.tag} points to ${remoteCommit}, but the release commit is ${releaseCommit}. Refusing to overwrite the tag.`)
+        if (await packageManifestChangedSince(remoteCommit, releaseTag.manifestPath, releaseCommit)) {
+            throw new Error(
+                `Remote tag ${releaseTag.tag} points to ${remoteCommit}, but the release commit is ${releaseCommit}. Refusing to overwrite the tag.`,
+            )
+        }
+
+        console.log(`Release tag ${releaseTag.tag} belongs to an unchanged package; leaving it at ${remoteCommit}.`)
+        continue
     }
 
     if (localCommit !== null && localCommit !== releaseCommit) {
@@ -37,6 +46,7 @@ for (const releaseTag of expectedTags) {
 
     if (remoteCommit === releaseCommit) {
         console.log(`Release tag ${releaseTag.tag} is already synchronized.`)
+        tagsToVerify.push(releaseTag)
         continue
     }
 
@@ -50,10 +60,11 @@ for (const releaseTag of expectedTags) {
     }
 
     tagsToPush.push(releaseTag.tag)
+    tagsToVerify.push(releaseTag)
 }
 
 if (verifyOnly) {
-    console.log(`Verified ${expectedTags.length} release tags on origin.`)
+    console.log(`Verified ${tagsToVerify.length} release tags for this commit; unchanged package tags were left intact.`)
     process.exit(0)
 }
 
@@ -63,7 +74,7 @@ if (tagsToPush.length > 0) {
     console.log(`Pushed ${tagsToPush.length} release tags.`)
 }
 
-for (const releaseTag of expectedTags) {
+for (const releaseTag of tagsToVerify) {
     const remoteCommit = await remoteTagCommit(releaseTag.tag)
 
     if (remoteCommit !== releaseCommit) {
@@ -71,7 +82,7 @@ for (const releaseTag of expectedTags) {
     }
 }
 
-console.log(`Synchronized ${expectedTags.length} release tags for ${releaseCommit}.`)
+console.log(`Synchronized ${tagsToVerify.length} release tags for ${releaseCommit}.`)
 
 async function readPublishablePackages() {
     const entries = await readdir(packagesDirectory, { withFileTypes: true })
@@ -95,7 +106,11 @@ async function readPublishablePackages() {
                 throw new Error(`Package manifest ${manifestPath} must define a name and version`)
             }
 
-            packageManifests.push({ name: manifest.name, version: manifest.version })
+            packageManifests.push({
+                name: manifest.name,
+                version: manifest.version,
+                manifestPath: `packages/${entry.name}/package.json`,
+            })
         } catch (error) {
             if (error?.code === 'ENOENT') {
                 continue
@@ -106,6 +121,11 @@ async function readPublishablePackages() {
     }
 
     return packageManifests.sort((left, right) => left.name.localeCompare(right.name))
+}
+
+async function packageManifestChangedSince(commit, manifestPath, releaseCommit) {
+    const changedFiles = await git(['diff', '--name-only', `${commit}..${releaseCommit}`, '--', manifestPath])
+    return changedFiles.length > 0
 }
 
 async function localTagCommit(tag) {
