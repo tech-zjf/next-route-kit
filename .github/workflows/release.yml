@@ -51,8 +51,15 @@ jobs:
             - name: Run release gate
               run: pnpm release:check
 
-            - name: Verify Changesets state
-              run: pnpm release:status
+            - name: Verify versioned Changesets state
+              shell: bash
+              run: |
+                  pending_changesets="$(find .changeset -maxdepth 1 -type f -name '*.md' ! -name 'README.md' -print)"
+                  if [ -n "$pending_changesets" ]; then
+                      echo "::error::Unversioned Changesets remain. Run pnpm release:version, install the lockfile, and commit the generated package versions before publishing."
+                      printf '%s\n' "$pending_changesets"
+                      exit 1
+                  fi
 
             - name: Configure npm authentication
               run: npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"

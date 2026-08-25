@@ -58,11 +58,13 @@ Then:
 - [ ] Approve the `npm-release` environment.
 
 The workflow runs the same release gate and publishes the four packages through
-Changesets. The final `release:tags` step then verifies, creates when necessary,
-pushes, and re-checks one annotated tag per published package. It refuses to
-overwrite a tag that points to a different commit. The workflow does not run
-automatically on every push and does not bypass `main` branch protection by
-pushing source commits.
+Changesets. It refuses to publish while an unversioned Changeset remains, so a
+successful workflow cannot silently publish zero packages because
+`release:version` was skipped. The final `release:tags` step then verifies,
+creates when necessary, pushes, and re-checks one annotated tag per published
+package. It refuses to overwrite a tag that points to a different commit. The
+workflow does not run automatically on every push and does not bypass `main`
+branch protection by pushing source commits.
 
 ## Subsequent releases
 

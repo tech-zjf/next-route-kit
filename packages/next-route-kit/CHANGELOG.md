@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3
+
+### Patch Changes
+
+- 79f9f7c: Expose the effective plugin scope through `Factory.config` and document how
+  application-owned response serializers and exception filters can define a
+  project-specific response protocol.
+
 ## 0.1.2
 
 ### Patch Changes
