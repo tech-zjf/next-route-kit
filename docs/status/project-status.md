@@ -1,16 +1,16 @@
 # Project Status
 
-Last updated: 2026-08-20
+Last updated: 2026-08-25
 
 ## Current state
 
 ```text
 Project: next-route-kit
-Phase: 0.1.0 public release complete; release workflow hardening in progress
+Phase: 0.1.3 patch release complete
 Status: npm release, CI, and production compatibility gates passed
 Product gate: package is useful for repeated JSON CRUD/Auth Route policy
-Next checkpoint: push workflow hardening and verify Node.js 24-compatible Actions plus release tag sync
-Publication: four packages published at 0.1.0; four package-version tags verified on GitHub
+Next checkpoint: continue compatibility review against supported Next.js versions
+Publication: next-route-kit and @next-route-kit/testing published at 0.1.3; release tags verified on GitHub
 ```
 
 ## 本轮已经完成
@@ -110,8 +110,8 @@ Next.js fixture 已接入显式 Flat Config 和 `@next/eslint-plugin-next`，Nex
 ## 外部发布事项
 
 0.1.0 的 npm scope、发布环境、CI、Release workflow 和 package-version tags
-已经完成并核验。后续只需要维护者推送本轮 workflow hardening，并等待新的 CI
-验证结果。
+已经完成并核验。本轮 0.1.3 发布由 GitHub Release workflow 完成，发布门禁、npm
+版本和 release tags 均已核验；发布工作流也会拒绝仍有未落地 Changeset 的提交。
 
 仓库通过 pnpm override 将 Next.js fixture 使用的 `sharp` 和 `postcss` 锁到已修复版本，
 并将 `pnpm audit:prod` 纳入发布门禁；四个公开包的实际 tarball 仍不包含 Next.js
