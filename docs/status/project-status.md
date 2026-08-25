@@ -67,7 +67,7 @@ export const POST = authenticatedRoute({
 - runner-neutral testing package；
 - authenticated resource flow；
 - success、unauthorized、malformed body、validation error；
-- Next 15/16 Node/Edge fixtures；
+- Next 15 Node/Edge 与 Next 16 Node fixtures；
 - params、query、JSON body、原生 Response；
 - packed consumer 公共导出边界。
 
@@ -97,14 +97,15 @@ export const POST = authenticatedRoute({
 - test：通过，Core、主包、testing 和 Zod 测试全部通过；
 - build：通过，Core、adapter、Zod、testing 和 Next 15/16 fixtures；
 - verify:packed：通过，4 个公开包的实际 tarball 边界和外部 consumer；
-- verify:next:prod：通过，Next 15.5.23、16.3.1 Node/Edge HTTP smoke；
+- verify:next:prod：通过，Next 15.5.23 Node/Edge 与 Next 16.3.1 Node HTTP smoke；
 - verify:next:dev：通过，Next 15/16 Turbopack development HTTP smoke；
 - git diff --check：通过；
 - npm tarball：只包含 dist、README、CHANGELOG、LICENSE 和 package.json。
 
-Next.js 构建仍有已记录的框架警告：Next 15 fixture 未启用 Next ESLint plugin，
-Next 16 报告 Edge Runtime deprecated。这些不是 package 失败，详见
-[兼容性矩阵](../compatibility/next-matrix.md)。
+Next.js fixture 已接入显式 Flat Config 和 `@next/eslint-plugin-next`，Next 15 的 plugin
+检测提示已消失；Next 16 不再构建已弃用的 Edge Runtime，Edge 覆盖保留在 Next 15 fixture
+中。Next 15 构建仍会对真实 Edge App Route 提示静态生成限制，这是 Next 自身的运行时行为，
+详见[兼容性矩阵](../compatibility/next-matrix.md)。
 
 ## 外部发布事项
 

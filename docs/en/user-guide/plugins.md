@@ -202,6 +202,44 @@ composable and are the right place to turn a known error into a `Response`; use
 `apiResponsePlugin()` when the application wants the standard
 `{ code, msg, data }` contract.
 
+If an application defines its own response protocol, configure its serializer
+and exception filter together, preferably behind one application-owned plugin:
+
+```ts
+const applicationResponsePlugin: RoutePlugin = {
+    name: 'application-response',
+    install() {
+        return {
+            responseSerializer: numericResponseSerializer,
+            exceptionFilters: [numericExceptionFilter],
+        }
+    },
+}
+```
+
+The serializer controls successful plain values; it does not replace the
+exception boundary. Registering only one of them can intentionally produce
+different success and error formats, but most applications should keep the
+two policies together.
+
+## What this borrows from NestJS
+
+The lifecycle is inspired by the useful part of NestJS's request model:
+middleware prepares the request, guards decide admission, interceptors wrap
+execution, pipes validate or transform inputs, and exception filters define the
+error boundary. NestJS documents the same separation between guards, pipes,
+interceptors, and filters.
+
+The package deliberately stops before NestJS's application container. It does
+not add controllers, decorators, module discovery, dependency injection, or a
+second router. Next.js already owns route discovery and the native
+`Request`/`Response` boundary, so an explicit Factory and immutable scopes keep
+the composition visible and compatible with Node and Edge deployments.
+
+`Factory.config` exposes the read-only plugin list and effective lifecycle
+arrays. This makes the active scope inspectable without introducing a runtime
+container or process-global registry.
+
 Use direct `middleware`, `guards`, or other components when a policy is needed
 once. Create a plugin when the policy has a name, is reused across scopes, or
 needs to package several lifecycle contributions together.

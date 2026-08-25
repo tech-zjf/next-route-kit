@@ -27,12 +27,15 @@ npm install -D @next-route-kit/testing    # 可选
 - [迁移](user-guide/migration.md)
 - [问题排查](user-guide/troubleshooting.md)
 
-## 招募试用用户
+## 生产项目接入与兼容性反馈
 
-项目还处在早期。如果你的 App Router 项目里重复了鉴权、校验、错误映射或响应
-封装，欢迎先在一条接口上试用，再通过[反馈 Issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose)
-告诉我 Next.js 版本、runtime、迁移的接口，以及 API 或文档哪里让你困惑。直接的
-负面反馈也同样有帮助。
+本包面向真实的 App Router 项目，解决鉴权、校验、错误映射和响应封装等横切策略的
+重复问题。建议从一条有代表性的 Route Handler 开始渐进迁移，再根据实际接口形态
+扩展共享 Factory。
+
+报告迁移或兼容性结果时，请提供 Next.js 版本、runtime、迁移的接口形态，以及涉及的
+API 或文档位置。请通过[兼容性与迁移 Issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose)
+提交；这些信息会直接用于维护兼容性矩阵和改进公开 API。
 
 ## 基本模型
 

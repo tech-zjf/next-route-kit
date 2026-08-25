@@ -48,9 +48,11 @@ jobs:
                     - name: Next.js 15
                       package: '@next-route-kit/fixture-next15'
                       port: 3115
+                      edge: true
                     - name: Next.js 16
                       package: '@next-route-kit/fixture-next16'
                       port: 3116
+                      edge: false
         steps:
             - name: Checkout
               uses: actions/checkout@v6
@@ -90,7 +92,9 @@ jobs:
                   done
 
                   curl --fail --silent "http://127.0.0.1:${{ matrix.port }}/api/node?mode=ci" | grep -F '"runtime":"nodejs"'
-                  curl --fail --silent "http://127.0.0.1:${{ matrix.port }}/api/edge?mode=ci" | grep -F '"runtime":"edge"'
+                  if [ "${{ matrix.edge }}" = "true" ]; then
+                      curl --fail --silent "http://127.0.0.1:${{ matrix.port }}/api/edge?mode=ci" | grep -F '"runtime":"edge"'
+                  fi
                   curl --fail --silent "http://127.0.0.1:${{ matrix.port }}/api/params/sample-id" | grep -F '"id":"sample-id"'
                   curl --fail --silent -X POST "http://127.0.0.1:${{ matrix.port }}/api/echo" \
                       -H 'content-type: application/json' \

@@ -10,7 +10,7 @@ Start with the [English user guide](https://github.com/tech-zjf/next-route-kit/b
 [简体中文指南](https://github.com/tech-zjf/next-route-kit/blob/main/docs/zh-CN/README.md),
 or the [repository README](https://github.com/tech-zjf/next-route-kit#readme).
 
-## 5-minute quick start
+## 5-minute integration
 
 Try one JSON endpoint first. No `next.config.ts` registration is required.
 
@@ -30,12 +30,13 @@ export const POST = route({
 Next.js handlers. Migrate one route at a time; see the [migration guide](https://github.com/tech-zjf/next-route-kit/blob/main/docs/en/user-guide/migration.md)
 for a before/after example.
 
-## Pilot users wanted
+## Production adoption and compatibility feedback
 
 If your App Router project repeats authentication, validation, error mapping, or
-response envelopes, try this on one route and [open a feedback issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose).
-Please include your Next.js version, runtime, migrated route, and any confusing
-API or documentation. A clear “this is not worth it” is useful feedback too.
+response-envelope policy, migrate one representative route and extend the shared
+Factory as the pattern proves useful. For a migration or compatibility report,
+include your Next.js version, runtime, migrated route shape, and the relevant API
+or documentation area in the [compatibility and migration issue form](https://github.com/tech-zjf/next-route-kit/issues/new/choose).
 
 ## Native route API
 

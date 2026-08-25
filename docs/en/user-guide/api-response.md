@@ -124,6 +124,37 @@ Primitive results are represented as `{ value }` by the default mapper. This
 keeps the contract predictable, while `mapData` makes the intended list or
 pagination shape visible at the shared boundary.
 
+### Use a different application protocol
+
+The envelope plugin is an opinionated adapter, not a requirement of the
+pipeline. If an application uses numeric codes, array data, or different field
+names, keep that protocol in an application-owned serializer and exception
+filter:
+
+```ts
+const applicationResponsePlugin: RoutePlugin = {
+    name: 'application-response',
+    install() {
+        return {
+            responseSerializer: {
+                name: 'application-response-serializer',
+                serialize(value) {
+                    return Response.json({ code: 0, msg: 'ok', data: value })
+                },
+            },
+            exceptionFilters: [applicationExceptionFilter],
+        }
+    },
+}
+
+const route = createRoute({ plugins: [applicationResponsePlugin] })
+```
+
+This changes the application's protocol without changing the Core pipeline or
+requiring the built-in `apiResponsePlugin` to accept every possible business
+convention. Keep the serializer and exception filter together so success and
+error responses remain one coherent contract.
+
 ## Global and business error handling
 
 The server package does not decide whether a browser should show a global toast

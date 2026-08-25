@@ -9,14 +9,14 @@ compatibility. The fixtures live under `apps/` and consume the local
 | Fixture               | Locked Next.js version | Node route | Edge route | Async params | Auth/resource chain |
 | --------------------- | ---------------------: | :--------: | :--------: | :----------: | :-----------------: |
 | `apps/next15-fixture` |                15.5.23 |    pass    |    pass    |     pass     |        pass         |
-| `apps/next16-fixture` |                 16.3.1 |    pass    |    pass    |     pass     |        pass         |
+| `apps/next16-fixture` |                 16.3.1 |    pass    |    n/a     |     pass     |        pass         |
 
 The package-only CI surface is also checked on Node.js `18.18.0`, `20`, `22`,
 and `24`. This matrix intentionally excludes the Next.js fixtures because the
 framework versions have their own Node.js support ranges; the fixture matrix
 continues to run on the repository's primary Node.js 22 validation runtime.
 
-Each fixture contains:
+The Next 15 fixture contains:
 
 - `/api/node` with `runtime = 'nodejs'`;
 - `/api/edge` with `runtime = 'edge'`;
@@ -26,6 +26,12 @@ Each fixture contains:
   authentication Guard, input validation Pipe, response Interceptor, and
   ExceptionFilter;
 - query input on the Node and Edge routes.
+
+The Next 16 fixture keeps the Node, params, echo, and authenticated resource
+routes, but intentionally does not include an Edge route. Next.js 16 marks the
+Edge Runtime as deprecated and recommends the Node.js runtime instead. Edge
+support remains covered by the Next 15 fixture and by the framework-neutral
+runtime compatibility tests.
 
 The resource route is deliberately a user-shaped integration scenario rather than
 a synthetic `createRoute()` smoke test. It verifies that a request can be
@@ -82,13 +88,14 @@ curl -X POST 'http://127.0.0.1:3115/api/tenants/tenant-demo/resources?preview=tr
 ```
 
 Replace the filter and port with `fixture-next16` and `3116` for the Next.js 16
-fixture.
+fixture. The Next 16 fixture intentionally has no `/api/edge` route because
+that runtime is deprecated in Next.js 16.
 
 `pnpm verify:next:prod` builds both fixtures, starts them with `next start`, and
-checks the Node, Edge, params, echo, and authenticated resource routes. The
-development command starts both fixtures with `next dev --turbopack` and checks
-the same user-shaped route set. Production and development servers are
-intentionally verified as separate compatibility signals.
+checks the available Node, Edge, params, echo, and authenticated resource
+routes. The development command starts both fixtures with `next dev --turbopack`
+and checks the same user-shaped route set. Production and development servers
+are intentionally verified as separate compatibility signals.
 
 ## Packed consumer boundary
 
@@ -107,14 +114,17 @@ Until the paired packages are published to a registry, the temporary consumer
 uses local pnpm overrides for the paired Core and main adapter tarballs; the
 consumer itself has no workspace dependency.
 
-## Known warnings
+## Warning policy
 
-- Next.js 16.3.1 currently emits an Edge Runtime deprecation warning during
-  build. The Edge route still builds and serves successfully; the project will
-  revisit this fixture when Next changes the supported runtime contract.
-- Next.js 15.5.23 emits a warning that the minimal fixture does not load the
-  Next ESLint plugin. Repository linting still runs through the root ESLint
-  Flat Config, and the fixture build succeeds.
+The Next fixtures use explicit Flat Config entries with
+`@next/eslint-plugin-next`, so the Next 15 plugin-detection warning is gone. The
+Next 16 fixture does not opt into the deprecated Edge Runtime; Edge coverage is
+retained in the Next 15 fixture.
 
-These warnings are recorded rather than hidden so a future Next upgrade can
-distinguish a framework warning from a `next-route-kit` regression.
+Next.js 15.5.23 still prints one framework warning for the real Edge fixture:
+`Using edge runtime on a page currently disables static generation for that
+page`. This is emitted by Next's build when an App Router segment declares
+`runtime = 'edge'`; removing it would mean removing the production Edge
+compatibility fixture. It is therefore kept as an explicit, non-suppressed
+framework limitation rather than hidden with stderr filtering or environment
+flags.

@@ -4,8 +4,9 @@
 
 ### Patch Changes
 
-- Improve the package README and user guides with a five-minute quick start, an
-  incremental before/after migration example, and a pilot-user feedback path.
+- Improve the package README and user guides with a five-minute integration path,
+  an incremental before/after migration example, and a production compatibility
+  feedback path.
 
 ## 0.1.1
 

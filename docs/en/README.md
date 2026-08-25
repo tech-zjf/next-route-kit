@@ -27,13 +27,17 @@ npm install -D @next-route-kit/testing    # optional
 - [Migration](user-guide/migration.md)
 - [Troubleshooting](user-guide/troubleshooting.md)
 
-## Pilot users wanted
+## Production adoption and compatibility feedback
 
-The package is still early. If your App Router project has repeated
-authentication, validation, error mapping, or response-envelope code, try it on
-one route first. Then [open a feedback issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose)
-with your Next.js version, runtime, migrated route, and any confusing API or
-documentation. Negative feedback is welcome too.
+The package is built for production App Router projects with repeated
+authentication, validation, error mapping, or response-envelope policy. Start
+with one representative Route Handler and extend the shared Factory as the
+pattern proves useful.
+
+For a migration or compatibility report, include your Next.js version, runtime,
+migrated route shape, and the relevant API or documentation area. Use the
+[compatibility and migration issue form](https://github.com/tech-zjf/next-route-kit/issues/new/choose);
+these reports directly improve the compatibility matrix and public API.
 
 ## The basic model
 

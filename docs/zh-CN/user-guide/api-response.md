@@ -119,6 +119,34 @@ const apiContract = apiResponsePlugin({
 默认情况下，原始值会被放入 `{ value }`。这样既保证 `data` 的结构稳定，也不会
 把列表字段的含义藏在每个 Route 的临时包装里。
 
+### 使用其他业务协议
+
+统一响应插件是一个有明确约束的可选适配器，不是 Pipeline 的强制要求。如果业务项目使用数字
+错误码、数组 data 或不同字段名，可以在项目中维护自己的 Serializer 和 ExceptionFilter：
+
+```ts
+const applicationResponsePlugin: RoutePlugin = {
+    name: 'application-response',
+    install() {
+        return {
+            responseSerializer: {
+                name: 'application-response-serializer',
+                serialize(value) {
+                    return Response.json({ code: 0, msg: 'ok', data: value })
+                },
+            },
+            exceptionFilters: [applicationExceptionFilter],
+        }
+    },
+}
+
+const route = createRoute({ plugins: [applicationResponsePlugin] })
+```
+
+这样可以改变业务项目的响应协议，同时保持 Core Pipeline 不变，也不需要让内置
+`apiResponsePlugin` 兼容所有可能的业务约定。应将 Serializer 和 ExceptionFilter 放在同一个
+项目级插件中，确保成功和异常响应始终属于同一套契约。
+
 ## 全局错误与业务错误如何分工
 
 服务端包不会替前端决定是弹全局 Toast 还是打开某个业务弹窗，它只提供稳定的业务

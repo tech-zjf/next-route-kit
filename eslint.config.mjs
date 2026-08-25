@@ -1,4 +1,5 @@
 import eslint from '@eslint/js'
+import nextPlugin from '@next/eslint-plugin-next'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
@@ -39,6 +40,20 @@ export default tseslint.config(
                 },
             ],
             '@typescript-eslint/no-unsafe-declaration-merging': 'off',
+        },
+    },
+    {
+        files: ['apps/next15-fixture/**/*.{ts,tsx}', 'apps/next16-fixture/**/*.{ts,tsx}'],
+        plugins: {
+            '@next/next': nextPlugin,
+        },
+        settings: {
+            next: {
+                rootDir: ['apps/next15-fixture', 'apps/next16-fixture'],
+            },
+        },
+        rules: {
+            ...nextPlugin.configs.recommended.rules,
         },
     },
 )

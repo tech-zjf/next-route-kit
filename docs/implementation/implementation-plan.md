@@ -199,7 +199,8 @@ Status: completed; release workflow hardening in progress
 - 4 个公开包的实际 tarball 和 external consumer 通过；
 - Next.js 15.5.23、16.3.1 production 和 Turbopack development smoke 通过；
 - git diff --check、ESLint、typecheck、build、Prettier 全部通过；
-- Next.js 15/16 已知框架 warning 已记录在兼容性矩阵。
+- Next.js 15/16 的可操作 warning 已修复；Next 15 真实 Edge App Route 的静态生成限制仍按
+  Next 自身行为记录在兼容性矩阵。
 - GitHub CI 已通过；
 - 四个 `0.1.0` 包已发布到 npm；
 - 四个 package-version tag 已存在于 GitHub；

@@ -229,6 +229,7 @@ export class Factory<TLocals = DefaultRouteLocals> {
     private static asFactoryConfig<TLocals>(config: ResolvedRouteConfig<TLocals>): RouteFactoryConfig<TLocals> {
         return Object.freeze({
             ...(config.runtime === undefined ? {} : { runtime: config.runtime }),
+            plugins: config.pluginRegistry.plugins,
             middleware: config.middleware,
             guards: config.guards,
             pipes: config.pipes,

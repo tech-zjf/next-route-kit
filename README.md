@@ -76,7 +76,7 @@ npm install @next-route-kit/zod zod       # optional validation
 npm install -D @next-route-kit/testing    # optional test helpers
 ```
 
-## Try it in 5 minutes
+## Integrate in 5 minutes
 
 Start with one JSON endpoint. You do not need to migrate the whole application or
 register anything in `next.config.ts`.
@@ -97,8 +97,8 @@ export const POST = route({
 ```
 
 `request` stays the native Web `Request`, and the returned value uses the normal
-Next.js Route Handler boundary. If this one route does not get easier to read,
-stop here; the package is meant to remove repeated policy, not add ceremony.
+Next.js Route Handler boundary. This is the smallest useful integration surface;
+add shared middleware, guards, pipes, and exception filters as the API grows.
 
 ## Migrate one route at a time
 
@@ -136,16 +136,17 @@ export const POST = apiRoute({
 The migration is incremental. See the [migration guide](docs/en/user-guide/migration.md)
 for the policy-by-policy mapping and the cases that should remain plain handlers.
 
-## Pilot users wanted
+## Production adoption and compatibility feedback
 
-This project is still early, and real projects are more useful than another
-synthetic example. If your Next.js App Router project has repeated auth,
-validation, error mapping, or response-envelope code, try migrating one route
-and [open a feedback issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose).
+`next-route-kit` is built for production Next.js App Router APIs that repeat
+authentication, validation, error mapping, or response-envelope policy. Adopt it
+incrementally by migrating one representative Route Handler, then extend the
+shared Factory as the pattern proves useful.
 
-Please include your Next.js version, runtime, the route shape you migrated, and
-where the API or documentation felt awkward. A blunt “this is not worth it” is
-also useful feedback.
+When reporting a migration or compatibility result, include your Next.js version,
+runtime, route shape, and the API or documentation area involved. Submit the
+result through the [compatibility and migration issue form](https://github.com/tech-zjf/next-route-kit/issues/new/choose);
+these reports directly improve the compatibility matrix and public API.
 
 ## Build a shared route scope
 
@@ -583,7 +584,8 @@ for repeated JSON CRUD and authentication policy, not for wrapping every route.
 
 Next.js App Router Route Handlers, Node.js `>=18.18.0`, and Node/Edge targets
 when the composed plugins support the selected runtime. This repository verifies
-Next.js 15 and 16 fixtures.
+Next.js 15 and 16 fixtures; the Next 15 fixture covers Node and Edge, while the
+Next 16 fixture covers the Node.js runtime.
 
 ## License
 

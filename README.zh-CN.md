@@ -74,7 +74,7 @@ npm install @next-route-kit/zod zod       # 可选：Zod 校验
 npm install -D @next-route-kit/testing    # 可选：测试辅助
 ```
 
-## 5 分钟试用
+## 5 分钟接入
 
 先从一个 JSON 接口开始。不需要改造整个项目，也不需要在
 `next.config.ts` 注册任何内容。
@@ -95,8 +95,8 @@ export const POST = route({
 ```
 
 `request` 仍然是原生 Web `Request`，返回值也仍然走 Next.js 原生 Route Handler
-边界。如果只有这一条接口也没有变得更清晰，可以停在这里；这个包的目标是减少
-重复策略，不是增加额外仪式感。
+边界。这是最小可用的接入面；随着接口规模增长，再逐步加入共享 Middleware、Guard、
+Pipe 和 ExceptionFilter。
 
 ## 一次迁移一条接口
 
@@ -134,14 +134,15 @@ export const POST = apiRoute({
 迁移可以渐进进行。具体的策略映射，以及应该继续使用普通 Handler 的场景，见
 [迁移指南](docs/zh-CN/user-guide/migration.md)。
 
-## 招募试用用户
+## 生产项目接入与兼容性反馈
 
-项目还处在早期，真实项目比合成示例更有价值。如果你的 Next.js App Router
-项目里重复了鉴权、校验、错误映射或响应封装，欢迎先迁移一条接口，再通过
-[反馈 Issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose) 告诉我结果。
+`next-route-kit` 面向真实的 Next.js App Router API，解决鉴权、校验、错误映射和响应
+封装等横切策略的重复问题。建议从一条有代表性的 Route Handler 开始渐进迁移，再根据
+实际接口形态扩展共享 Factory。
 
-请尽量提供 Next.js 版本、runtime、迁移的接口形态，以及 API 或文档哪里让你困惑。
-直接说一句“这个不值得用”也同样有帮助。
+如果要报告迁移或兼容性结果，请提供 Next.js 版本、runtime、接口形态，以及涉及的 API
+或文档位置，并通过[兼容性与迁移 Issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose)
+提交。这些信息会直接用于维护兼容性矩阵和改进公开 API。
 
 ## 建立共享策略作用域
 
@@ -563,7 +564,8 @@ Zod 适配器自己的 JSON 结构。一个 Route 只选择一个错误边界，
 ## 兼容范围
 
 Next.js App Router Route Handler、Node.js `>=18.18.0`，以及所有插件支持目标运行时
-时的 Node/Edge。仓库会用 Next.js 15/16 fixture 验证。
+时的 Node/Edge。仓库会用 Next.js 15/16 fixture 验证，其中 Next 15 覆盖 Node/Edge，Next 16
+覆盖 Node.js 运行时。
 
 ## License
 

@@ -184,6 +184,37 @@ bundler 和运行时限制仍然有效。
 serializer。ExceptionFilter 可以组合，适合把已知异常转成 `Response`；如果项目需要统一
 `{ code, msg, data }` 契约，可以直接使用 `apiResponsePlugin()`。
 
+如果业务项目有自己的响应协议，建议把 Serializer 和 ExceptionFilter 一起配置，并封装成
+项目自己的插件：
+
+```ts
+const applicationResponsePlugin: RoutePlugin = {
+    name: 'application-response',
+    install() {
+        return {
+            responseSerializer: numericResponseSerializer,
+            exceptionFilters: [numericExceptionFilter],
+        }
+    },
+}
+```
+
+Serializer 只负责成功返回值的序列化，不会替换异常边界。只配置其中一个，确实可以有意让
+成功和异常使用不同格式；但大多数项目应该把这两项策略放在同一个项目级插件中。
+
+## 从 NestJS 借鉴什么
+
+本包借鉴 NestJS 请求模型中真正通用的部分：Middleware 准备请求，Guard 决定是否准入，
+Interceptor 包裹执行过程，Pipe 校验或转换输入，ExceptionFilter 定义异常边界。NestJS 官方
+文档也采用这套职责分离。
+
+本包有意不引入 NestJS 的应用容器，不增加 Controller、Decorator、Module 扫描、依赖注入或
+第二套路由器。Next.js 已经负责路由发现，并且已经定义了原生 `Request`/`Response` 边界；
+显式 Factory 和不可变作用域更适合 Node/Edge 部署，也更容易让实际生效的策略保持可见。
+
+`Factory.config` 会暴露只读的插件列表和最终生命周期数组。这样可以检查当前作用域真正生效的
+配置，而不需要引入运行时容器或进程级全局注册表。
+
 只使用一次的策略直接写 `middleware`、`guards` 等配置即可；当策略有明确名称、会跨多个作用域复用，
 或需要把多个生命周期组件打包在一起时，再抽成插件。
 

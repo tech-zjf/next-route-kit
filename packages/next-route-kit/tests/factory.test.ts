@@ -9,8 +9,10 @@ import {
     RuntimeIncompatiblePluginError,
     textBody,
     type ArgumentMetadata,
+    type ExceptionFilter,
     type Pipe,
     type RoutePlugin,
+    type ResponseSerializer,
 } from '../src/index.js'
 
 type AppLocals = {
@@ -44,6 +46,23 @@ function nextParams<TParams>(params: TParams): { params: Promise<TParams> } {
 }
 
 describe('createRoute', () => {
+    it('exposes the installed plugin scope in the immutable config snapshot', () => {
+        const plugin: RoutePlugin = {
+            name: 'request-policy',
+            install() {
+                return {}
+            },
+        }
+        const route = createRoute({ plugins: [plugin] })
+
+        expect(route.config.plugins).toEqual([plugin])
+        expect(Object.isFrozen(route.config.plugins)).toBe(true)
+        expect(route.extend({ plugins: [{ name: 'audit', install: () => ({}) }] }).config.plugins?.map((item) => item.name)).toEqual([
+            'request-policy',
+            'audit',
+        ])
+    })
+
     it('keeps Next-compatible values in custom route parameter types', () => {
         const route = createRoute()
 
@@ -304,6 +323,54 @@ describe('createRoute', () => {
         const response = await GET(new Request('https://example.test/resources/sample-id?search=route-kit'), nextParams({ id: 'sample-id' }))
 
         expect(await response.json()).toEqual({ id: 'sample-id', search: 'route-kit' })
+    })
+
+    it('supports a project-owned response contract without changing the core pipeline', async () => {
+        class NumericApiError extends Error {
+            readonly code = 1001
+            readonly status = 422
+            readonly data = ['name']
+        }
+
+        const responseSerializer: ResponseSerializer = {
+            name: 'numeric-response',
+            serialize(value) {
+                return Response.json({ code: 0, msg: 'ok', data: value })
+            },
+        }
+        const exceptionFilter: ExceptionFilter = {
+            name: 'numeric-exception',
+            catch(error) {
+                if (!(error instanceof NumericApiError)) {
+                    return undefined
+                }
+
+                return Response.json({ code: error.code, msg: error.message, data: error.data }, { status: error.status })
+            },
+        }
+        const route = createRoute({ responseSerializer, exceptionFilters: [exceptionFilter] })
+
+        const success = route({ handler: () => [{ id: 'resource-1' }] })
+        const failure = route({
+            handler: () => {
+                throw new NumericApiError('Invalid resource')
+            },
+        })
+
+        const successResponse = await success(new Request('https://example.test/resources'))
+        await expect(successResponse.json()).resolves.toEqual({
+            code: 0,
+            msg: 'ok',
+            data: [{ id: 'resource-1' }],
+        })
+
+        const errorResponse = await failure(new Request('https://example.test/resources'))
+        expect(errorResponse.status).toBe(422)
+        await expect(errorResponse.json()).resolves.toEqual({
+            code: 1001,
+            msg: 'Invalid resource',
+            data: ['name'],
+        })
     })
 
     it('parses repeated query keys only when query is declared', async () => {

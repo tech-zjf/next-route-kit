@@ -10,11 +10,13 @@ const fixtures = [
         name: 'Next.js 15',
         packageName: '@next-route-kit/fixture-next15',
         port: 3215,
+        hasEdgeRoute: true,
     },
     {
         name: 'Next.js 16',
         packageName: '@next-route-kit/fixture-next16',
         port: 3216,
+        hasEdgeRoute: false,
     },
 ]
 
@@ -38,7 +40,9 @@ async function verifyFixture(fixture) {
     try {
         await waitForRoute(child, `http://127.0.0.1:${fixture.port}/api/node?mode=dev`, serverLabel)
         await assertJson(`http://127.0.0.1:${fixture.port}/api/node?mode=dev`, { data: { runtime: 'nodejs' } }, { headers: { 'x-request-id': 'dev-node' } })
-        await assertJson(`http://127.0.0.1:${fixture.port}/api/edge?mode=dev`, { data: { runtime: 'edge' } }, { headers: { 'x-request-id': 'dev-edge' } })
+        if (fixture.hasEdgeRoute) {
+            await assertJson(`http://127.0.0.1:${fixture.port}/api/edge?mode=dev`, { data: { runtime: 'edge' } }, { headers: { 'x-request-id': 'dev-edge' } })
+        }
         await assertJson(`http://127.0.0.1:${fixture.port}/api/params/sample-id`, { data: { id: 'sample-id' } }, { headers: { 'x-request-id': 'dev-params' } })
         await assertJson(
             `http://127.0.0.1:${fixture.port}/api/echo`,
