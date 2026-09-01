@@ -1,16 +1,16 @@
 # Project Status
 
-Last updated: 2026-08-25
+Last updated: 2026-09-01
 
 ## Current state
 
 ```text
 Project: next-route-kit
-Phase: 0.1.3 patch release complete
+Phase: 0.2.0 contract hardening release complete
 Status: npm release, CI, and production compatibility gates passed
 Product gate: package is useful for repeated JSON CRUD/Auth Route policy
 Next checkpoint: continue compatibility review against supported Next.js versions
-Publication: next-route-kit and @next-route-kit/testing published at 0.1.3; release tags verified on GitHub
+Publication: next-route-kit 0.2.0, @next-route-kit/core 0.2.0, @next-route-kit/zod 0.3.0, and @next-route-kit/testing 0.1.4 published; release tags verified on GitHub
 ```
 
 ## 本轮已经完成
@@ -55,7 +55,10 @@ export const POST = authenticatedRoute({
 - Zod 只在 @next-route-kit/zod；
 - testing helpers 只在 @next-route-kit/testing。
 - 可选的 `apiResponsePlugin()` 提供统一 `{ code, msg, data }` 契约；业务码由应用维护，
-  `ApiException` 只负责把业务异常带到 Route 边界；原生 `Response` 仍然透传。
+  `ApiException` 只负责把业务异常带到 Route 边界；`data` 保留业务值，业务码支持字符串和数字。
+- `withLocals()` 用实际 Provider 返回值建立后续 Handler 的必填 locals 类型；
+- `zodBody()` / `zodQuery()` 将解析、校验、转换和 Handler 输入类型绑定到同一个 Schema；
+- 自动 Body Resolver 默认限制为 1 MiB，严格 JSON Factory 可使用 `nativeResponse: 'reject'`。
 
 ### 测试和适配层
 
@@ -73,28 +76,28 @@ export const POST = authenticatedRoute({
 
 ## 当前架构决策
 
-| 决策                                      | 状态                                  |
-| ----------------------------------------- | ------------------------------------- |
-| 包名使用 next-route-kit                   | 暂定，发布前仍需确认 npm 名称和 scope |
-| 使用 createRoute(config) 创建 Factory     | 已接受                                |
-| Factory 使用 class-backed callable shell  | 已接受                                |
-| 使用 extend() 派生不可变作用域            | 已接受                                |
-| 全局策略由应用普通 server module 显式导入 | 已接受                                |
-| 不强制特殊命名的 route 配置文件           | 已接受                                |
-| 不从 next.config.ts 注入运行时策略        | 已接受                                |
-| Handler 使用 request + named context      | 已接受                                |
-| body/query 可选声明                       | 已接受                                |
-| 继承的安全组件 0.1.0 不可静默移除         | 已接受                                |
-| Core 不依赖 Next.js/Zod                   | 已接受                                |
-| Next 版本适配集中在 adapter 和 fixtures   | 已接受                                |
+| 决策                                      | 状态         |
+| ----------------------------------------- | ------------ |
+| 包名使用 next-route-kit                   | 已接受并发布 |
+| 使用 createRoute(config) 创建 Factory     | 已接受       |
+| Factory 使用 class-backed callable shell  | 已接受       |
+| 使用 extend() 派生不可变作用域            | 已接受       |
+| 全局策略由应用普通 server module 显式导入 | 已接受       |
+| 不强制特殊命名的 route 配置文件           | 已接受       |
+| 不从 next.config.ts 注入运行时策略        | 已接受       |
+| Handler 使用 request + named context      | 已接受       |
+| body/query 可选声明                       | 已接受       |
+| 继承的安全组件 0.1.0 不可静默移除         | 已接受       |
+| Core 不依赖 Next.js/Zod                   | 已接受       |
+| Next 版本适配集中在 adapter 和 fixtures   | 已接受       |
 
 ## 本轮门禁结果
 
-- docs:check：通过，55 个 Markdown 文件和 11 个双语用户页面；
+- docs:check：通过，56 个 Markdown 文件和 11 个双语用户页面；
 - Prettier：通过；
 - ESLint：通过，0 warning；
 - typecheck：通过，6 个 workspace package；
-- test：通过，Core、主包、testing 和 Zod 测试全部通过；
+- test：通过，共 83 个 Core、主包、testing 和 Zod 测试；
 - build：通过，Core、adapter、Zod、testing 和 Next 15/16 fixtures；
 - verify:packed：通过，4 个公开包的实际 tarball 边界和外部 consumer；
 - verify:next:prod：通过，Next 15.5.23 Node/Edge 与 Next 16.3.1 Node HTTP smoke；
@@ -110,8 +113,9 @@ Next.js fixture 已接入显式 Flat Config 和 `@next/eslint-plugin-next`，Nex
 ## 外部发布事项
 
 0.1.0 的 npm scope、发布环境、CI、Release workflow 和 package-version tags
-已经完成并核验。本轮 0.1.3 发布由 GitHub Release workflow 完成，发布门禁、npm
-版本和 release tags 均已核验；发布工作流也会拒绝仍有未落地 Changeset 的提交。
+已经完成并核验。本轮 0.2.0 发布由 GitHub Release workflow 完成，四个 npm
+版本、`latest` dist-tag、公开安装和 release tags 均已核验；发布工作流也会拒绝仍有
+未落地 Changeset 的提交。
 
 仓库通过 pnpm override 将 Next.js fixture 使用的 `sharp` 和 `postcss` 锁到已修复版本，
 并将 `pnpm audit:prod` 纳入发布门禁；四个公开包的实际 tarball 仍不包含 Next.js
@@ -145,7 +149,18 @@ next-route-kit 的价值通过代表性 JSON CRUD/Auth Route 和发布门禁持�
 
 ## Activity log
 
-### 2026-08-20 — Enterprise boundary hardening
+### 2026-09-01 — 0.2.0 contract hardening release
+
+- 发布 `next-route-kit@0.2.0`、`@next-route-kit/core@0.2.0`、
+  `@next-route-kit/zod@0.3.0` 和 `@next-route-kit/testing@0.1.4`；
+- 增加 runtime-backed `withLocals()`、schema-bound `zodBody()` / `zodQuery()`、
+  1 MiB 自动 Body 上限、严格 Response 策略，以及字符串/数字业务码和任意 `data` 值；
+- Serializer 异常现在进入 ExceptionFilter，Next 15/16 fixtures 已切换到真实 Provider locals；
+- 完整本地 `release:check`、[GitHub CI](https://github.com/tech-zjf/next-route-kit/actions/runs/33512544779)
+  和受保护的 [Release workflow](https://github.com/tech-zjf/next-route-kit/actions/runs/33512712660) 均通过；
+- 四个 npm `latest` dist-tag、公开 registry 安装、运行时导入和对应 Git 标签均已核验。
+
+### 2026-08-20 — Route boundary hardening
 
 - 阻止 Interceptor 重复调用 `next()` 导致 Handler 重复执行，并公开对应诊断错误；
 - 统一响应插件在未配置 Reporter 时默认记录未知异常，Reporter 自身失败也不会破坏系统错误响应；
