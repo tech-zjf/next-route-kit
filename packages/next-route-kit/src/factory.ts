@@ -5,6 +5,7 @@ import {
     type ExceptionFilter,
     type Guard,
     type Interceptor,
+    type NativeResponsePolicy,
     type Pipe,
     type ResponseSerializer,
     type RouteContext,
@@ -15,12 +16,13 @@ import {
     type RouteRuntime,
 } from '@next-route-kit/core'
 import { InputSource } from './input.js'
-import { defaultExceptionFilter, InvalidJsonBodyError } from './errors.js'
+import { defaultExceptionFilter, InvalidJsonBodyError, PayloadTooLargeError } from './errors.js'
 import type { RouteInputDefinition } from './input.js'
 import type {
     AnyRouteContext,
     DefaultRouteLocals,
     JsonResponseOptions,
+    LocalsProvider,
     NextRouteHandler,
     NextRouteHandlerContext,
     RootRouteFactory,
@@ -38,6 +40,8 @@ type RouteArgumentDefinitions<TParams extends RouteParamsConstraint<TParams>, TL
 
 interface RouteConfigLayer<TLocals> {
     readonly runtime: RouteRuntime | undefined
+    readonly maxBodyBytes: number | undefined
+    readonly nativeResponse: NativeResponsePolicy | undefined
     readonly pluginRegistry: RoutePluginRegistry
     readonly middleware: readonly RouteMiddleware<AnyRouteContext<TLocals>>[]
     readonly guards: readonly Guard<AnyRouteContext<TLocals>>[]
@@ -48,10 +52,14 @@ interface RouteConfigLayer<TLocals> {
 }
 
 interface ResolvedRouteConfig<TLocals> extends RouteConfigLayer<TLocals> {
+    readonly maxBodyBytes: number
+    readonly nativeResponse: NativeResponsePolicy
     readonly responseSerializer: ResponseSerializer<unknown, AnyRouteContext<TLocals>>
 }
 
 type FactoryMode = 'root' | 'configured'
+
+export const DEFAULT_MAX_BODY_BYTES = 1024 * 1024
 
 /**
  * The application-owned Route Factory.
@@ -87,6 +95,30 @@ export class Factory<TLocals = DefaultRouteLocals> {
     }
 
     /**
+     * Derive a child Factory whose handlers receive request locals returned by
+     * a provider that runs in the Guard stage before automatic body parsing.
+     */
+    withLocals<TProvided extends object>(provider: LocalsProvider<TLocals, TProvided>): Factory<TLocals & TProvided> {
+        const guard: Guard<AnyRouteContext<TLocals & TProvided>> = {
+            name: provider.name,
+            async canActivate(context) {
+                const provided = await provider.provide(context as unknown as AnyRouteContext<TLocals>)
+
+                if (isResponse(provided)) {
+                    return provided
+                }
+
+                Object.assign(context.locals, provided)
+                return true
+            },
+        }
+        const parent = this._config as unknown as ResolvedRouteConfig<TLocals & TProvided>
+        const child = Factory.resolveLayer<TLocals & TProvided>({ guards: [guard] }, parent.runtime)
+
+        return Factory.fromResolved(Factory.merge(parent, child))
+    }
+
+    /**
      * Compile one native-compatible Next Route Handler from route options.
      *
      * Plugin installation and pipeline compilation happen once here, not for
@@ -105,6 +137,7 @@ export class Factory<TLocals = DefaultRouteLocals> {
             interceptors: merged.interceptors,
             exceptionFilters: merged.exceptionFilters,
             responseSerializer: merged.responseSerializer,
+            nativeResponse: merged.nativeResponse,
             handler: async (context) => {
                 const handlerContext = Factory.createHandlerContext<TParams, TBody, TQuery, TLocals>(context, argumentDefinitions)
                 return options.handler(context.request, handlerContext as RouteHandlerContext<TParams, TBody, TQuery, TLocals>)
@@ -117,7 +150,7 @@ export class Factory<TLocals = DefaultRouteLocals> {
             let bodyPromise: Promise<unknown> | undefined
 
             const readText = (): Promise<string> => {
-                bodyTextPromise ??= request.text()
+                bodyTextPromise ??= readRequestText(request, merged.maxBodyBytes)
                 return bodyTextPromise
             }
             const readBody = <T>(): Promise<T> => {
@@ -177,6 +210,8 @@ export class Factory<TLocals = DefaultRouteLocals> {
         return Factory.freeze({
             ...layer,
             exceptionFilters: [...layer.exceptionFilters, defaultExceptionFilter()],
+            maxBodyBytes: layer.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES,
+            nativeResponse: layer.nativeResponse ?? 'passthrough',
             responseSerializer: layer.responseSerializer ?? jsonResponse(),
         }) as ResolvedRouteConfig<TLocals>
     }
@@ -199,6 +234,8 @@ export class Factory<TLocals = DefaultRouteLocals> {
 
         return {
             runtime: config.runtime,
+            maxBodyBytes: validateMaxBodyBytes(config.maxBodyBytes),
+            nativeResponse: config.nativeResponse,
             pluginRegistry,
             middleware: [...(config.middleware ?? []), ...contributions.middleware],
             guards: [...(config.guards ?? []), ...contributions.guards],
@@ -216,6 +253,8 @@ export class Factory<TLocals = DefaultRouteLocals> {
 
         return Factory.freeze({
             runtime,
+            maxBodyBytes: child.maxBodyBytes === undefined ? parent.maxBodyBytes : Math.min(parent.maxBodyBytes, child.maxBodyBytes),
+            nativeResponse: parent.nativeResponse === 'reject' ? 'reject' : (child.nativeResponse ?? parent.nativeResponse),
             pluginRegistry,
             middleware: [...parent.middleware, ...child.middleware],
             guards: [...parent.guards, ...child.guards],
@@ -229,6 +268,8 @@ export class Factory<TLocals = DefaultRouteLocals> {
     private static asFactoryConfig<TLocals>(config: ResolvedRouteConfig<TLocals>): RouteFactoryConfig<TLocals> {
         return Object.freeze({
             ...(config.runtime === undefined ? {} : { runtime: config.runtime }),
+            maxBodyBytes: config.maxBodyBytes,
+            nativeResponse: config.nativeResponse,
             plugins: config.pluginRegistry.plugins,
             middleware: config.middleware,
             guards: config.guards,
@@ -246,6 +287,8 @@ export class Factory<TLocals = DefaultRouteLocals> {
 
         return {
             ...(options.runtime ? { runtime: options.runtime } : {}),
+            ...(options.maxBodyBytes === undefined ? {} : { maxBodyBytes: options.maxBodyBytes }),
+            ...(options.nativeResponse === undefined ? {} : { nativeResponse: options.nativeResponse }),
             ...(options.middleware ? { middleware: options.middleware } : {}),
             ...(options.guards ? { guards: options.guards } : {}),
             ...(options.pipes ? { pipes: options.pipes } : {}),
@@ -382,6 +425,67 @@ export interface Factory<TLocals = DefaultRouteLocals> extends RouteFactory<TLoc
 
 /** Callable root instance: const route = createRoute({ ...config }). */
 export const createRoute: RootRouteFactory = new Factory({}, 'root') as unknown as RootRouteFactory
+
+function isResponse(value: unknown): value is Response {
+    return typeof Response !== 'undefined' && value instanceof Response
+}
+
+function validateMaxBodyBytes(value: number | undefined): number | undefined {
+    if (value === undefined) {
+        return undefined
+    }
+
+    if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new TypeError('maxBodyBytes must be a positive safe integer')
+    }
+
+    return value
+}
+
+async function readRequestText(request: Request, maxBytes: number): Promise<string> {
+    const declaredLength = request.headers.get('content-length')
+
+    if (declaredLength !== null) {
+        const bytes = Number(declaredLength)
+
+        if (Number.isFinite(bytes) && bytes > maxBytes) {
+            throw new PayloadTooLargeError(maxBytes)
+        }
+    }
+
+    if (!request.body) {
+        return ''
+    }
+
+    const reader = request.body.getReader()
+    const decoder = new TextDecoder()
+    let receivedBytes = 0
+    const textChunks: string[] = []
+
+    try {
+        while (true) {
+            const chunk = await reader.read()
+
+            if (chunk.done) {
+                break
+            }
+
+            receivedBytes += chunk.value.byteLength
+
+            if (receivedBytes > maxBytes) {
+                await reader.cancel()
+                throw new PayloadTooLargeError(maxBytes)
+            }
+
+            textChunks.push(decoder.decode(chunk.value, { stream: true }))
+        }
+
+        textChunks.push(decoder.decode())
+        return textChunks.join('')
+    } finally {
+        reader.releaseLock()
+    }
+}
 
 export function jsonResponse<TContext extends RouteContext<any, any, any> = RouteContext<any, any, any>>(
     options: JsonResponseOptions<TContext> = {},

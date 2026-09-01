@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { DuplicateInterceptorNextError, executeRoutePipeline, forbidden, RoutePipeline, type RouteContext } from '../src/index.js'
+import {
+    DuplicateInterceptorNextError,
+    executeRoutePipeline,
+    forbidden,
+    NativeResponseNotAllowedError,
+    RoutePipeline,
+    type RouteContext,
+} from '../src/index.js'
 
 function createContext(): RouteContext {
     return {
@@ -398,6 +405,81 @@ describe('executeRoutePipeline', () => {
                 createContext(),
             ),
         ).rejects.toThrow('ResponseSerializer')
+    })
+
+    it('maps asynchronous response serializer failures through exception filters', async () => {
+        const response = await executeRoutePipeline(
+            {
+                exceptionFilters: [
+                    {
+                        name: 'serializer-error',
+                        catch(error) {
+                            if (error instanceof Error && error.message === 'serializer failed') {
+                                return Response.json({ code: 'SERIALIZER_FAILED' }, { status: 500 })
+                            }
+
+                            return undefined
+                        },
+                    },
+                ],
+                responseSerializer: {
+                    name: 'throwing',
+                    async serialize() {
+                        throw new Error('serializer failed')
+                    },
+                },
+                handler: () => ({ ok: true }),
+            },
+            createContext(),
+        )
+
+        expect(response.status).toBe(500)
+        expect(await response.json()).toEqual({ code: 'SERIALIZER_FAILED' })
+    })
+
+    it('rejects native Response values when the pipeline uses a strict response policy', async () => {
+        await expect(
+            executeRoutePipeline(
+                {
+                    nativeResponse: 'reject',
+                    responseSerializer: jsonSerializer,
+                    handler: () => Response.json({ bypassed: true }),
+                },
+                createContext(),
+            ),
+        ).rejects.toBeInstanceOf(NativeResponseNotAllowedError)
+    })
+
+    it('applies the strict response policy to guard short circuits', async () => {
+        const response = await executeRoutePipeline(
+            {
+                nativeResponse: 'reject',
+                guards: [
+                    {
+                        name: 'short-circuit',
+                        canActivate: () => Response.json({ bypassed: true }),
+                    },
+                ],
+                exceptionFilters: [
+                    {
+                        name: 'strict-response-error',
+                        catch(error) {
+                            if (error instanceof NativeResponseNotAllowedError) {
+                                return Response.json({ code: 'NATIVE_RESPONSE_REJECTED' }, { status: 500 })
+                            }
+
+                            return undefined
+                        },
+                    },
+                ],
+                responseSerializer: jsonSerializer,
+                handler: () => ({ shouldNotRun: true }),
+            },
+            createContext(),
+        )
+
+        expect(response.status).toBe(500)
+        expect(await response.json()).toEqual({ code: 'NATIVE_RESPONSE_REJECTED' })
     })
 
     it('exports the explicit forbidden helper for guard implementations', () => {

@@ -4,6 +4,8 @@ export type RouteRuntime = 'nodejs' | 'edge'
 
 export type RuntimeSupport = RouteRuntime | 'both'
 
+export type NativeResponsePolicy = 'passthrough' | 'reject'
+
 export type RouteParamValue = string | string[] | undefined
 
 /** Default dynamic route parameter shape used when a route has no custom type. */
@@ -60,6 +62,8 @@ export interface RouteConfig<TContext extends AnyRouteContext = AnyRouteContext,
     readonly interceptors?: readonly Interceptor<TContext>[]
     readonly exceptionFilters?: readonly ExceptionFilter<TContext>[]
     readonly responseSerializer?: ResponseSerializer<TResult, TContext>
+    /** Whether native Response values may bypass the configured serializer. */
+    readonly nativeResponse?: NativeResponsePolicy
 }
 
 export type RouteHandler<TContext extends AnyRouteContext = AnyRouteContext, TResult = unknown> = (context: TContext) => MaybePromise<TResult>

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+
+### Minor Changes
+
+- Add schema-bound `zodBody()` and `zodQuery()` input sources that infer parsed
+  Zod output directly in Route Handlers.
+
+### Patch Changes
+
+- Updated dependencies
+    - @next-route-kit/core@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes

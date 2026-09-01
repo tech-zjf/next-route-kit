@@ -15,7 +15,7 @@ Next params hydration
   → Interceptor 退出
   → Response 序列化
 
-异常由 ExceptionFilter.catch() 处理。
+包括 Response 序列化失败在内的异常由 ExceptionFilter.catch() 处理。
 ```
 
 这条顺序采用清晰的服务端请求生命周期，同时保留 Next 原生的
@@ -33,7 +33,9 @@ const requestId: RouteMiddleware<ApiContext> = {
 }
 ```
 
-Middleware 包裹后续执行，必须调用 `next()`；重复调用会抛出
+Middleware 包住 Guard 在内的后续执行，适合覆盖所有请求的 CORS、日志和总耗时。
+它拿到的是序列化前的链路结果，而不是最终 HTTP Response。继续执行必须调用
+`next()`；重复调用会抛出
 `DuplicateMiddlewareNextError`。
 
 ## Guard
@@ -70,7 +72,9 @@ const envelope: Interceptor<ApiContext> = {
 }
 ```
 
-`next()` 之前是进入阶段，`await next()` 之后是退出阶段。
+Interceptor 只包住通过 Guard 后的输入解析和 Handler，不处理被 Guard 直接拒绝的
+请求。`next()` 之前是进入阶段，`await next()` 之后是退出阶段。它适合统一
+Envelope、Handler 结果转换和授权后缓存，属于高级扩展点。
 如果下游 Handler 返回原生 `Response`，应直接透传，否则状态码、响应头和响应体会被
 错误地包进统一 JSON 响应。
 
@@ -98,5 +102,6 @@ Filter。默认 Filter 处理内置 `HttpError` 和非法 JSON。
 
 ## Response
 
-普通值使用 `jsonResponse()`。原生 `Response` 原样返回，流、文件、跳转和
-`204` 不需要特殊适配 API。
+普通值使用 `jsonResponse()`。原生 `Response` 默认原样返回，流、文件、跳转和
+`204` 不需要特殊适配 API。严格 JSON 作用域可以设置
+`nativeResponse: 'reject'`，禁止 Middleware、Guard 或 Handler 绕过 serializer。

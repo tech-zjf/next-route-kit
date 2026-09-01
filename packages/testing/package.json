@@ -1,6 +1,6 @@
 {
     "name": "@next-route-kit/testing",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "description": "Framework-neutral request, response, and plugin test helpers for next-route-kit",
     "author": {
         "name": "tech-zjf",

@@ -95,6 +95,10 @@ try {
     await cp(join(fixtureDirectory, 'src'), join(consumerDirectory, 'src'), { recursive: true })
     await cp(join(fixtureDirectory, 'tsconfig.json'), join(consumerDirectory, 'tsconfig.json'))
     await writeFile(
+        join(consumerDirectory, 'pnpm-workspace.yaml'),
+        `packages:\n  - .\noverrides:\n  '@next-route-kit/core': ${JSON.stringify(`file:${coreTarball}`)}\n  'next-route-kit': ${JSON.stringify(`file:${kitTarball}`)}\n`,
+    )
+    await writeFile(
         join(consumerDirectory, 'package.json'),
         `${JSON.stringify(
             {
@@ -106,12 +110,6 @@ try {
                     '@next-route-kit/zod': `file:${zodTarball}`,
                     '@next-route-kit/testing': `file:${testingTarball}`,
                     zod: `file:${zodPeerTarball}`,
-                },
-                pnpm: {
-                    overrides: {
-                        '@next-route-kit/core': `file:${coreTarball}`,
-                        'next-route-kit': `file:${kitTarball}`,
-                    },
                 },
             },
             null,

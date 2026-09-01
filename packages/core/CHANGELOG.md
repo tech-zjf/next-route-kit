@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+### Minor Changes
+
+- Await response serialization inside the ExceptionFilter boundary and add an
+  optional strict policy that rejects native Response values before serialization.
+
 ## 0.1.1
 
 ### Patch Changes

@@ -46,15 +46,12 @@ drifts between endpoints.
 ## The same route with a shared scope
 
 ```ts
-const apiRoute = createRoute<ApiLocals>({
-    middleware: [requestIdMiddleware],
+const apiRoute = createRoute({
     interceptors: [responseEnvelope],
     exceptionFilters: [apiExceptionFilter],
-})
+}).withLocals(requestContextProvider)
 
-const authenticatedRoute = apiRoute.extend({
-    guards: [authenticationGuard],
-})
+const authenticatedRoute = apiRoute.withLocals(authenticationProvider)
 
 export const POST = authenticatedRoute<ResourceParams, ResourceBody>({
     body: jsonBody<ResourceBody>(),

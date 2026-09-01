@@ -7,6 +7,7 @@
 ```ts
 const route = createRoute<TLocals>(config?)
 const child = route.extend(config)
+const authenticated = route.withLocals(provider)
 const handler = route<TParams, TBody, TQuery, TResult>(options)
 ```
 
@@ -21,6 +22,8 @@ Next-compatible Handler for method exports.
 ```ts
 type RouteOptions = {
     runtime?: 'nodejs' | 'edge'
+    maxBodyBytes?: number
+    nativeResponse?: 'passthrough' | 'reject'
     middleware?: RouteMiddleware[]
     guards?: Guard[]
     pipes?: Pipe[]
@@ -38,6 +41,10 @@ type RouteOptions = {
 
 Most routes need only `handler`. Add `body` or `query` only when the
 package should resolve and cache that value.
+
+Automatic body parsing is limited to 1 MiB by default. Inherited scopes may
+tighten but cannot relax `maxBodyBytes`. Use `nativeResponse: 'reject'` for a
+strict JSON scope where every normal result must use the serializer.
 
 When a route has no dynamic params, the types from `jsonBody<T>()` and
 `query<T>()` are inferred without route generics. When a route has both typed
@@ -70,6 +77,9 @@ first handler parameter remains the native `Request`.
 
 Params and headers are read directly from `context.params` and
 `request.headers`; URL and cookie access stay on the native `request` as well.
+
+The optional Zod adapter provides `zodBody(schema)` and `zodQuery(schema)` to
+infer the schema output directly in the Handler.
 
 ## Component contracts
 
@@ -126,8 +136,9 @@ throw new ApiException(ResponseCode.RESOURCE_NOT_FOUND, {
 
 `apiResponsePlugin()` contributes a success Interceptor and an exception Filter.
 It emits `{ code, msg, data }`, catches unexpected errors with the configured
-`systemError`, and preserves native `Response` values. `ResponseCodeDefinition` has
-`code`, `msg`, and an optional HTTP `status`; `ApiException` accepts optional
+`systemError`, and preserves native `Response` values unless a strict scope
+rejects them. `ResponseCodeDefinition` has a string or numeric `code`, `msg`, and
+an optional HTTP `status`; `ApiException` accepts optional
 `message`, `data`, `status`, and `cause` overrides. See the [API response guide](api-response.md)
 for the full contract and migration example.
 
@@ -139,7 +150,7 @@ type ApiResponseErrorMapping = {
     code: ResponseCodeDefinition
     status?: number
     message?: string
-    data?: Readonly<Record<string, unknown>>
+    data?: unknown
 }
 ```
 

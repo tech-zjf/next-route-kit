@@ -44,15 +44,12 @@ export async function POST(request: Request, context: NextContext) {
 ## 使用共享作用域
 
 ```ts
-const apiRoute = createRoute<ApiLocals>({
-    middleware: [requestIdMiddleware],
+const apiRoute = createRoute({
     interceptors: [responseEnvelope],
     exceptionFilters: [apiExceptionFilter],
-})
+}).withLocals(requestContextProvider)
 
-const authenticatedRoute = apiRoute.extend({
-    guards: [authenticationGuard],
-})
+const authenticatedRoute = apiRoute.withLocals(authenticationProvider)
 
 export const POST = authenticatedRoute<ResourceParams, ResourceBody>({
     body: jsonBody<ResourceBody>(),

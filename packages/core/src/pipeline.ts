@@ -1,4 +1,10 @@
-import { DuplicateInterceptorNextError, DuplicateMiddlewareNextError, MissingResponseSerializerError, forbidden } from './errors.js'
+import {
+    DuplicateInterceptorNextError,
+    DuplicateMiddlewareNextError,
+    MissingResponseSerializerError,
+    NativeResponseNotAllowedError,
+    forbidden,
+} from './errors.js'
 import type {
     AnyRouteContext,
     ArgumentMetadata,
@@ -6,6 +12,7 @@ import type {
     Guard,
     Interceptor,
     MaybePromise,
+    NativeResponsePolicy,
     Pipe,
     ResponseSerializer,
     RouteHandler,
@@ -19,6 +26,7 @@ export interface RoutePipelineDefinition<TContext extends AnyRouteContext = AnyR
     readonly interceptors?: readonly Interceptor<TContext>[]
     readonly exceptionFilters?: readonly ExceptionFilter<TContext>[]
     readonly responseSerializer?: ResponseSerializer<TResult, TContext>
+    readonly nativeResponse?: NativeResponsePolicy
     readonly handler: RouteHandler<TContext, TResult>
 }
 
@@ -51,6 +59,7 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
     readonly interceptors: readonly Interceptor<TContext>[]
     readonly exceptionFilters: readonly ExceptionFilter<TContext>[]
     readonly responseSerializer: ResponseSerializer<unknown, TContext> | undefined
+    readonly nativeResponse: NativeResponsePolicy
 
     private readonly handler: RouteHandler<TContext, TResult>
 
@@ -61,6 +70,7 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
         this.interceptors = Object.freeze([...(definition.interceptors ?? [])])
         this.exceptionFilters = Object.freeze([...(definition.exceptionFilters ?? [])])
         this.responseSerializer = definition.responseSerializer as ResponseSerializer<unknown, TContext> | undefined
+        this.nativeResponse = definition.nativeResponse ?? 'passthrough'
         this.handler = definition.handler
     }
 
@@ -91,7 +101,7 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
         try {
             await prepareContext?.(context)
             const result = await this.runMiddleware(context, runProtectedStages)
-            return this.serializeResult(result, context)
+            return await this.serializeResult(result, context)
         } catch (error) {
             for (const filter of this.exceptionFilters) {
                 const response = await filter.catch(error, context)
@@ -107,6 +117,10 @@ export class RoutePipeline<TContext extends AnyRouteContext = AnyRouteContext, T
 
     private async serializeResult(value: unknown, context: TContext): Promise<Response> {
         if (isResponse(value)) {
+            if (this.nativeResponse === 'reject') {
+                throw new NativeResponseNotAllowedError()
+            }
+
             return value
         }
 

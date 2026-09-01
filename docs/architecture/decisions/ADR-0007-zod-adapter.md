@@ -19,6 +19,8 @@ dependency. The first adapter exposes:
 
 - `ZodPipe` / `zodPipe(schema)` for async validation and parsed-output
   replacement;
+- `zodBody(schema)` and `zodQuery(schema)` for schema-bound Next Route inputs
+  whose Handler types come from the parsed Zod output;
 - `ZodValidationError` with normalized, immutable, client-safe issues and
   argument metadata; rejected input is redacted unless `captureInput` is
   explicitly enabled;
@@ -49,8 +51,8 @@ Trade-off:
 
 - the parsed output of a `Pipe` is a runtime pipeline transformation; the route
   handler's static input type still comes from its `body` or `query` definition.
-  Applications should use `z.input`/`z.output` explicitly when a schema
-  transforms a value.
+  Applications should use schema-bound inputs for route-local schemas, or use
+  `z.output` explicitly when a Factory-wide Pipe transforms a value.
 
 ## Rejected alternatives
 

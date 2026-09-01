@@ -223,6 +223,117 @@ describe('createRoute', () => {
         expect(bodyRead).toBe(false)
     })
 
+    it('rejects automatic body parsing above the configured byte limit', async () => {
+        const POST = createRoute({ maxBodyBytes: 16 })({
+            body: jsonBody<{ value: string }>(),
+            handler: (_request, { body }) => body,
+        })
+
+        const response = await POST(
+            new Request('https://example.test/resources', {
+                method: 'POST',
+                body: JSON.stringify({ value: 'body-is-larger-than-limit' }),
+            }),
+        )
+
+        expect(response.status).toBe(413)
+        expect(await response.json()).toEqual({
+            code: 'PAYLOAD_TOO_LARGE',
+            message: 'Request body exceeds the 16-byte limit',
+            details: { maxBytes: 16 },
+        })
+    })
+
+    it('uses Content-Length for an early body limit rejection', async () => {
+        const POST = createRoute({ maxBodyBytes: 16 })({
+            body: textBody(),
+            handler: (_request, { body }) => ({ body }),
+        })
+
+        const response = await POST(
+            new Request('https://example.test/resources', {
+                method: 'POST',
+                headers: { 'content-length': '17' },
+                body: 'small',
+            }),
+        )
+
+        expect(response.status).toBe(413)
+    })
+
+    it('counts the automatic body limit in UTF-8 bytes rather than characters', async () => {
+        const accepted = createRoute({ maxBodyBytes: 3 })({
+            body: textBody(),
+            handler: (_request, { body }) => body,
+        })
+        const rejected = createRoute({ maxBodyBytes: 2 })({
+            body: textBody(),
+            handler: (_request, { body }) => body,
+        })
+
+        expect(await (await accepted(new Request('https://example.test', { method: 'POST', body: '你' }))).json()).toBe('你')
+        expect(await rejected(new Request('https://example.test', { method: 'POST', body: '你' }))).toHaveProperty('status', 413)
+    })
+
+    it('does not let a child scope relax an inherited body limit', async () => {
+        const route = createRoute({ maxBodyBytes: 16 })
+        const child = route.extend({ maxBodyBytes: 1024 })
+        const POST = child({
+            body: textBody(),
+            handler: (_request, { body }) => ({ body }),
+        })
+
+        expect(child.config.maxBodyBytes).toBe(16)
+        expect(await POST(new Request('https://example.test', { method: 'POST', body: 'x'.repeat(17) }))).toHaveProperty('status', 413)
+        expect(() => createRoute({ maxBodyBytes: 0 })).toThrow(TypeError)
+    })
+
+    it('derives typed locals from runtime provider output before body parsing', async () => {
+        const route = createRoute().withLocals({
+            name: 'session',
+            provide(context) {
+                return {
+                    userId: context.request.headers.get('x-user-id') ?? 'viewer-demo',
+                    workspaceId: 'workspace-demo',
+                }
+            },
+        })
+        const POST = route({
+            body: jsonBody<{ label: string }>(),
+            handler: (_request, { body, locals }) => {
+                const userId: string = locals.userId
+                const workspaceId: string = locals.workspaceId
+                return { label: body.label, userId, workspaceId }
+            },
+        })
+
+        const response = await POST(new Request('https://example.test', { method: 'POST', body: JSON.stringify({ label: 'sample' }) }))
+
+        expect(await response.json()).toEqual({ label: 'sample', userId: 'viewer-demo', workspaceId: 'workspace-demo' })
+    })
+
+    it('lets a locals provider reject before an automatic body resolver runs', async () => {
+        let bodyRead = false
+        const route = createRoute().withLocals({
+            name: 'session',
+            provide() {
+                return Response.json({ code: 'UNAUTHORIZED' }, { status: 401 })
+            },
+        })
+        const POST = route({
+            body: async ({ readBody }) => {
+                bodyRead = true
+                return readBody()
+            },
+            handler: () => ({ shouldNotRun: true }),
+        })
+
+        const response = await POST(new Request('https://example.test', { method: 'POST', body: 'invalid' }))
+
+        expect(response.status).toBe(401)
+        expect(bodyRead).toBe(false)
+    })
+
     it('does not run global pipes when a route declares no input', async () => {
         let pipeRuns = 0
         const route = createRoute({

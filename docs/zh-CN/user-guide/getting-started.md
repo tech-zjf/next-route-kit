@@ -48,29 +48,20 @@ Handler 第一个参数是原生 `Request`。Next 的动态 params 会在 Middle
 ```ts
 import { unauthorized } from 'next-route-kit'
 
-const authenticatedRoute = route.extend({
-    guards: [
-        {
-            name: 'authentication',
-            canActivate(context) {
-                if (context.request.headers.get('authorization') !== 'Bearer sample-token') {
-                    throw unauthorized()
-                }
+const authenticatedRoute = route.withLocals({
+    name: 'authentication',
+    provide(context) {
+        if (context.request.headers.get('authorization') !== 'Bearer sample-token') {
+            throw unauthorized()
+        }
 
-                context.locals.userId = 'viewer-demo'
-                return true
-            },
-        },
-    ],
+        return { userId: 'viewer-demo' }
+    },
 })
 ```
 
-用 Factory 泛型声明请求级共享值：
-
-```ts
-type ApiLocals = { userId?: string; requestId: string }
-const apiRoute = createRoute<ApiLocals>({ middleware: [requestContext] })
-```
+Provider 的真实返回值会自动进入后续 Handler 的 locals 类型，不需要额外声明
+`userId?` 或使用类型断言。普通 Guard 仍适合不产生新 locals 的权限检查。
 
 ## 只在需要时声明 Body/Query
 

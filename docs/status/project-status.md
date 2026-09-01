@@ -117,10 +117,9 @@ Next.js fixture 已接入显式 Flat Config 和 `@next/eslint-plugin-next`，Nex
 并将 `pnpm audit:prod` 纳入发布门禁；四个公开包的实际 tarball 仍不包含 Next.js
 或这些 fixture 依赖。
 
-## 产品成功标准
+## 产品验收标准
 
-不能用“有测试”替代“有人会用”。首个真实试点应选择 10 个普通
-JSON CRUD/Auth Route，比较改造前后：
+next-route-kit 的价值通过代表性 JSON CRUD/Auth Route 和发布门禁持续验证：
 
 - 非业务代码行数中位数至少减少 20%；
 - 每个 Route 不再重复认证、通用 try/catch 和 Envelope；
@@ -129,7 +128,7 @@ JSON CRUD/Auth Route，比较改造前后：
 - 业务开发者能直接理解 Route、Service、鉴权和返回值；
 - 不强行改造流、上传、Webhook、Cron 和长任务。
 
-达不到这个门槛，就应收缩包的定位或停止发布，而不是继续增加抽象。
+不满足这些标准的能力不进入公开 API，避免用额外抽象掩盖实际问题。
 
 ## 更新协议
 
@@ -153,7 +152,8 @@ JSON CRUD/Auth Route，比较改造前后：
 - Zod 适配器默认不保留被拒绝的原始输入，只暴露稳定的 `code`、`message`、`path` 字段；
 - 增加并发请求 locals 隔离、重复 Interceptor、默认异常报告和敏感校验数据回归覆盖；
 - 将 Vitest 的 Vite 工具链锁定到支持 Node.js 18.18 的 6.4.3，避免宽松 Peer Dependency 漂移到仅支持 Node.js 20+ 的 Vite 7；
-- Body 大小策略、Schema-bound input 和公共泛型重构仍需独立 API 设计，不在本轮叠加未经验证的抽象。
+- Body 大小策略、Schema-bound input、运行时 locals provider 和响应泛型已通过独立 API
+  设计与回归覆盖落地；自动 Body 默认限制为 1 MiB，严格响应策略保持显式可选。
 
 ### 2026-08-19 — Release workflow hardening
 
@@ -231,7 +231,7 @@ JSON CRUD/Auth Route，比较改造前后：
 - 梳理大型 App Router 项目中常见的认证、解析、错误和响应重复模式；
 - 识别适用的 JSON CRUD/Auth Route；
 - 将流、上传、Webhook、Cron、长任务列为明确边界；
-- 增加改造前后阅读路径和试点验收标准。
+- 增加改造前后阅读路径和产品验收标准。
 
 ### 2026-08-18 — Release candidate gate
 

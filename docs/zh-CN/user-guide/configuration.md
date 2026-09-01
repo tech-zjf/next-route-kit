@@ -5,14 +5,14 @@
 ## 应用级作用域
 
 ```ts
-const apiRoute = createRoute<ApiLocals>({
-    middleware: [requestContext],
+const apiRoute = createRoute({
+    middleware: [requestLogger],
     guards: [requireApiKey],
     pipes: [trimInput],
     interceptors: [responseEnvelope],
     exceptionFilters: [apiExceptionFilter],
     response: jsonResponse(),
-})
+}).withLocals(requestContext)
 ```
 
 从 `apiRoute` 创建的所有 Route 都会继承这套策略。
@@ -32,6 +32,25 @@ const adminRoute = authenticatedRoute.extend({
 `extend()` 是不可变的。父 Factory 不会被修改，因此 public Route 不会意外继承
 admin Guard。
 
+## 带运行时保证的 Locals
+
+需要让后续 Handler 获得必填的身份或租户字段时，使用 Provider 的实际返回值派生类型：
+
+```ts
+const sessionRoute = apiRoute.withLocals({
+    name: 'session',
+    async provide(context) {
+        const session = await authenticate(context.request)
+        if (!session) throw unauthorized()
+        return { userId: session.userId, organizationId: session.organizationId }
+    },
+})
+```
+
+Provider 位于 Guard 阶段，在自动 Body 解析前运行。只有 Provider 成功返回后，Handler
+才会执行，因此 `locals.userId` 和 `locals.organizationId` 是必填类型。不要只通过
+`createRoute<RequiredLocals>()` 声明运行时没有建立的字段。
+
 组合顺序是：
 
 ```text
@@ -43,19 +62,21 @@ Middleware、Guard、Pipe、Interceptor 按顺序追加。Exception Filter 按 R
 
 ## 选项
 
-| 选项               | 用途                       |
-| ------------------ | -------------------------- |
-| `runtime`          | 声明 Node/Edge 插件兼容性  |
-| `plugins`          | 注册可复用贡献             |
-| `middleware`       | 外层处理和请求级初始化     |
-| `guards`           | 鉴权与权限                 |
-| `pipes`            | Body/Query 校验和转换      |
-| `interceptors`     | 响应封装、耗时、缓存、追踪 |
-| `exceptionFilters` | 把错误转换成 `Response`    |
-| `response`         | JSON serializer 简写       |
-| `body`             | 可选 Route Body 解析器     |
-| `query`            | 可选 Route Query 解析器    |
-| `handler`          | 业务函数                   |
+| 选项               | 用途                      |
+| ------------------ | ------------------------- |
+| `runtime`          | 声明 Node/Edge 插件兼容性 |
+| `maxBodyBytes`     | 自动 Body 读取上限        |
+| `nativeResponse`   | 透传或拒绝原生 Response   |
+| `plugins`          | 注册可复用贡献            |
+| `middleware`       | 包住完整链路的外层处理    |
+| `guards`           | 鉴权与权限                |
+| `pipes`            | Body/Query 校验和转换     |
+| `interceptors`     | 输入/Handler 结果高级处理 |
+| `exceptionFilters` | 把错误转换成 `Response`   |
+| `response`         | JSON serializer 简写      |
+| `body`             | 可选 Route Body 解析器    |
+| `query`            | 可选 Route Query 解析器   |
+| `handler`          | 业务函数                  |
 
 配置是显式的。包不会扫描目录、修改进程级全局注册表，也不需要特殊配置文件。
 

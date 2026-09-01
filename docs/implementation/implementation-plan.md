@@ -138,13 +138,7 @@ Status: completed
 - success、unauthorized、validation-error 三条路径；
 - 代表性 CRUD/Auth Route 的改造前后示例。
 
-尚未声称：
-
-- next-route-kit 已经改造任何外部生产代码；
-- 所有 Route 都适合使用；
-- 仅凭测试就能证明阅读性达到 80+。
-
-真实试点退出门槛：
+公开 API 的验收标准：
 
 - 选 10 个普通 JSON CRUD/Auth Route；
 - 非业务代码行数中位数至少下降 20%；

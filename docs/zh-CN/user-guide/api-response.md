@@ -20,7 +20,7 @@ export const ResponseCode = {
 } as const
 ```
 
-`code` 是稳定的业务契约。配置了 `status` 时，它只表示该异常对应的 HTTP 传输
+`code` 可以是字符串或数字，并且是稳定的业务契约。配置了 `status` 时，它只表示该异常对应的 HTTP 传输
 状态，不会替代响应中的业务 `code`。
 
 ## 只注册一次统一响应插件
@@ -44,8 +44,11 @@ export const apiRoute = createRoute({
     plugins: [apiContract],
 })
 
-export const authenticatedRoute = apiRoute.extend({
-    guards: [requireUser],
+export const authenticatedRoute = apiRoute.withLocals({
+    name: 'session',
+    async provide(context) {
+        return { userId: await requireUser(context.request) }
+    },
 })
 
 type CreateResourceInput = {
@@ -105,8 +108,8 @@ Handler 只返回业务数据或抛出业务异常，不再创建 `NextResponse`
 }
 ```
 
-`data` 永远是对象。列表接口建议直接返回 `{ items, total, nextCursor }`；如果
-项目希望所有列表都使用统一字段，也可以在插件中配置一次 `mapData`：
+`data` 原样保留 Handler 返回的数据，可以是对象、数组、基本类型或 `null`。如果项目希望
+所有列表都使用 `{ items }`，可以在插件中配置一次 `mapData`：
 
 ```ts
 const apiContract = apiResponsePlugin({
@@ -116,13 +119,12 @@ const apiContract = apiResponsePlugin({
 })
 ```
 
-默认情况下，原始值会被放入 `{ value }`。这样既保证 `data` 的结构稳定，也不会
-把列表字段的含义藏在每个 Route 的临时包装里。
+没有 `mapData` 时不会改变业务数据形状。
 
 ### 使用其他业务协议
 
-统一响应插件是一个有明确约束的可选适配器，不是 Pipeline 的强制要求。如果业务项目使用数字
-错误码、数组 data 或不同字段名，可以在项目中维护自己的 Serializer 和 ExceptionFilter：
+内置插件已经支持数字错误码和任意 `data`。只有字段名或整体结构不同于
+`{ code, msg, data }` 时，才需要项目自己的 Serializer 和 ExceptionFilter：
 
 ```ts
 const applicationResponsePlugin: RoutePlugin = {
@@ -143,9 +145,23 @@ const applicationResponsePlugin: RoutePlugin = {
 const route = createRoute({ plugins: [applicationResponsePlugin] })
 ```
 
-这样可以改变业务项目的响应协议，同时保持 Core Pipeline 不变，也不需要让内置
-`apiResponsePlugin` 兼容所有可能的业务约定。应将 Serializer 和 ExceptionFilter 放在同一个
-项目级插件中，确保成功和异常响应始终属于同一套契约。
+应将 Serializer 和 ExceptionFilter 放在同一个项目级插件中，确保成功和异常响应始终属于
+同一套契约，同时保持 Core Pipeline 不变。
+
+### 严格 JSON 作用域
+
+默认情况下，原生 `Response` 会透传，便于返回流、跳转和 `204`。如果某个 JSON API
+作用域要求所有成功响应都经过统一 serializer，设置：
+
+```ts
+const strictApiRoute = createRoute({
+    nativeResponse: 'reject',
+    plugins: [apiContract],
+})
+```
+
+这会拒绝 Middleware、Guard 或 Handler 直接返回的原生 `Response`，再由统一异常边界
+映射为系统错误。ExceptionFilter 返回的错误响应仍然有效。
 
 ## 全局错误与业务错误如何分工
 
@@ -160,7 +176,7 @@ if (payload.code === ResponseCode.QUOTA_EXCEEDED.code) {
 ```
 
 前端请求层可以统一处理登录失效、无权限、配额不足、系统异常等通用码；具体功能
-页面再处理自己的业务码。不需要再猜服务端返回的是数字还是字符串，也不需要兼容
+页面再处理自己的业务码。一个项目应固定使用字符串或数字业务码，不需要兼容
 `message` 和 `msg` 两套字段。
 
 未识别的异常会统一映射为 `systemError`，内部错误信息不会返回给客户端。默认会用
@@ -175,10 +191,9 @@ if (payload.code === ResponseCode.QUOTA_EXCEEDED.code) {
 
 ```ts
 import { apiResponsePlugin, createRoute } from 'next-route-kit'
-import { ZodValidationError, zodPipe } from '@next-route-kit/zod'
+import { ZodValidationError, zodBody } from '@next-route-kit/zod'
 
 const apiRoute = createRoute({
-    pipes: [zodPipe(schema, { appliesTo: 'body' })],
     plugins: [
         apiResponsePlugin({
             success: ResponseCode.SUCCESS,
@@ -195,6 +210,11 @@ const apiRoute = createRoute({
             },
         }),
     ],
+})
+
+export const POST = apiRoute({
+    body: zodBody(schema),
+    handler: (_request, { body }) => service.create(body),
 })
 ```
 

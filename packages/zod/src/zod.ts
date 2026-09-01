@@ -1,4 +1,5 @@
 import type { AnyRouteContext, ArgumentMetadata, ExceptionFilter, Pipe } from '@next-route-kit/core'
+import { defineInputSource, jsonBody, query, type InputSource } from 'next-route-kit'
 
 export interface ZodSafeParseSuccess<TOutput> {
     readonly success: true
@@ -55,6 +56,11 @@ export interface ZodPipeOptions {
     readonly captureInput?: boolean
 }
 
+export interface ZodInputOptions {
+    /** Retain rejected input on ZodValidationError. Disabled by default because inputs may contain secrets. */
+    readonly captureInput?: boolean
+}
+
 /** A Pipe that validates one resolved route argument with a Zod schema. */
 export class ZodPipe<TSchema extends ZodSchemaLike = ZodSchemaLike> implements Pipe<unknown, ZodOutput<TSchema>, AnyRouteContext> {
     readonly name: string
@@ -75,18 +81,32 @@ export class ZodPipe<TSchema extends ZodSchemaLike = ZodSchemaLike> implements P
             return value as ZodOutput<TSchema>
         }
 
-        const result = await this.schema.safeParseAsync(value)
-
-        if (result.success) {
-            return result.data as ZodOutput<TSchema>
-        }
-
-        throw new ZodValidationError(result.error, value, metadata, { captureInput: this.captureInput })
+        return parseWithZod(this.schema, value, metadata, this.captureInput)
     }
 }
 
 export function zodPipe<TSchema extends ZodSchemaLike>(schema: TSchema, options?: ZodPipeOptions): ZodPipe<TSchema> {
     return new ZodPipe(schema, options)
+}
+
+/** Parse, validate, transform, and infer one JSON body from a Zod schema. */
+export function zodBody<TSchema extends ZodSchemaLike>(schema: TSchema, options: ZodInputOptions = {}): InputSource<ZodOutput<TSchema>> {
+    const source = jsonBody<unknown>()
+
+    return defineInputSource('zod-body', 'body', async (context) => {
+        const value = await source.resolve(context)
+        return parseWithZod(schema, value, { type: 'body', name: 'zod-body' }, options.captureInput ?? false)
+    })
+}
+
+/** Parse, validate, transform, and infer one query object from a Zod schema. */
+export function zodQuery<TSchema extends ZodSchemaLike>(schema: TSchema, options: ZodInputOptions = {}): InputSource<ZodOutput<TSchema>> {
+    const source = query()
+
+    return defineInputSource('zod-query', 'query', async (context) => {
+        const value = await source.resolve(context)
+        return parseWithZod(schema, value, { type: 'query', name: 'zod-query' }, options.captureInput ?? false)
+    })
 }
 
 export interface ZodExceptionFilterOptions {
@@ -137,6 +157,21 @@ export class ZodExceptionFilter<TContext extends AnyRouteContext = AnyRouteConte
 
 export function zodExceptionFilter<TContext extends AnyRouteContext = AnyRouteContext>(options?: ZodExceptionFilterOptions): ZodExceptionFilter<TContext> {
     return new ZodExceptionFilter(options)
+}
+
+async function parseWithZod<TSchema extends ZodSchemaLike>(
+    schema: TSchema,
+    value: unknown,
+    metadata: ArgumentMetadata,
+    captureInput: boolean,
+): Promise<ZodOutput<TSchema>> {
+    const result = await schema.safeParseAsync(value)
+
+    if (result.success) {
+        return result.data as ZodOutput<TSchema>
+    }
+
+    throw new ZodValidationError(result.error, value, metadata, { captureInput })
 }
 
 function normalizeIssues(error: unknown): readonly ZodValidationIssue[] {

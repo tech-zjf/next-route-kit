@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { ZodValidationError, zodExceptionFilter, zodPipe } from '../src/index.js'
+import { createRoute } from 'next-route-kit'
+import { ZodValidationError, zodBody, zodExceptionFilter, zodPipe, zodQuery } from '../src/index.js'
 
 describe('zod adapter', () => {
     it('validates and transforms one route argument with inferred output types', async () => {
@@ -16,6 +17,36 @@ describe('zod adapter', () => {
         const queryValue = { page: '1' }
 
         await expect(pipe.transform(queryValue, { type: 'query', name: 'query' })).resolves.toEqual(queryValue)
+    })
+
+    it('binds JSON parsing, Zod transformation, and handler body inference', async () => {
+        const schema = z.object({ count: z.string().transform(Number) })
+        const POST = createRoute({ exceptionFilters: [zodExceptionFilter()] })({
+            body: zodBody(schema),
+            handler: (_request, { body }) => {
+                const count: number = body.count
+                return { count }
+            },
+        })
+
+        const response = await POST(new Request('https://example.test', { method: 'POST', body: JSON.stringify({ count: '2' }) }))
+
+        expect(await response.json()).toEqual({ count: 2 })
+    })
+
+    it('binds query parsing, validation, and handler query inference', async () => {
+        const schema = z.object({ page: z.coerce.number().int().positive() })
+        const GET = createRoute({ exceptionFilters: [zodExceptionFilter()] })({
+            query: zodQuery(schema),
+            handler: (_request, { query: values }) => {
+                const page: number = values.page
+                return { page }
+            },
+        })
+
+        const response = await GET(new Request('https://example.test?page=3'))
+
+        expect(await response.json()).toEqual({ page: 3 })
     })
 
     it('wraps schema issues with immutable metadata', async () => {

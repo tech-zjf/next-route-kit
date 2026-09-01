@@ -20,6 +20,39 @@ cached; Guards run first. When `body` is declared, use the named `body` value in
 the handler because the underlying Request stream may already have been
 consumed.
 
+Automatic body resolvers read at most 1 MiB by default. A Factory or route can
+set a lower `maxBodyBytes`; a child scope cannot relax its inherited limit. Use
+a separate Factory when a JSON domain needs a larger explicit limit:
+
+```ts
+const largeJsonRoute = createRoute({ maxBodyBytes: 5 * 1024 * 1024 })
+```
+
+Keep streams, multipart requests, and uploads on native Handlers instead of the
+automatic body resolver.
+
+## Schema-bound body and query
+
+When the application uses Zod, prefer one declaration that parses, validates,
+transforms, and infers the Handler type:
+
+```ts
+import { z } from 'zod'
+import { zodBody, zodQuery } from '@next-route-kit/zod'
+
+const bodySchema = z.object({ count: z.coerce.number().int().positive() })
+const querySchema = z.object({ preview: z.enum(['true', 'false']).optional() })
+
+export const POST = route({
+    body: zodBody(bodySchema),
+    query: zodQuery(querySchema),
+    handler: (_request, { body, query }) => service.create(body.count, query.preview),
+})
+```
+
+Keep `zodPipe()` for Factory-wide validation, advanced transformations across
+multiple sources, and projects that already use `jsonBody()` or custom sources.
+
 ## Query
 
 ```ts
@@ -82,7 +115,8 @@ const route = createRoute({ pipes: [validateBody] })
 ```
 
 Core stays validator-agnostic. The optional `@next-route-kit/zod` package provides
-`zodPipe()` and, for non-envelope routes, `zodExceptionFilter()`. If the route
+`zodBody()`, `zodQuery()`, `zodPipe()`, and, for non-envelope routes,
+`zodExceptionFilter()`. If the route
 uses `apiResponsePlugin()`, map `ZodValidationError` through its optional
 `mapError` callback instead so validation errors keep the `{ code, msg, data }`
 contract. Use `appliesTo` when a scope has both body and query schemas.

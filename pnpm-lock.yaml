@@ -129,6 +129,9 @@ importers:
         specifier: workspace:*
         version: link:../core
     devDependencies:
+      next-route-kit:
+        specifier: workspace:*
+        version: link:../next-route-kit
       zod:
         specifier: ^4.4.3
         version: 4.4.3

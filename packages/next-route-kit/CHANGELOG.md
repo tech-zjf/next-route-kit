@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0
+
+### Minor Changes
+
+- Add a default 1 MiB limit for automatic body readers, non-relaxable inherited
+  `maxBodyBytes`, runtime-backed typed locals providers, strict native Response
+  policy, numeric business codes, and arbitrary envelope data values.
+
+### Patch Changes
+
+- Updated dependencies
+    - @next-route-kit/core@0.2.0
+
 ## 0.1.3
 
 ### Patch Changes
@@ -13,8 +26,7 @@
 ### Patch Changes
 
 - Improve the package README and user guides with a five-minute integration path,
-  an incremental before/after migration example, and a production compatibility
-  feedback path.
+  an incremental before/after migration example, and compatibility documentation.
 
 ## 0.1.1
 

@@ -59,7 +59,8 @@ export const POST = apiRoute({
 ```
 
 The response is always `{ code: 'OK', msg: 'Success', data: { resourceId: 'resource-demo' } }`;
-business errors use an application-owned response code and keep `data` as an object.
+business errors use an application-owned string or numeric response code. `data`
+preserves the application's object, array, primitive, or `null` value.
 This gives a frontend one stable discriminator for global auth/quota handling and
 feature-specific dialogs. See the [API response guide](docs/en/user-guide/api-response.md)
 for migration patterns and list/error examples.
@@ -136,18 +137,6 @@ export const POST = apiRoute({
 The migration is incremental. See the [migration guide](docs/en/user-guide/migration.md)
 for the policy-by-policy mapping and the cases that should remain plain handlers.
 
-## Production adoption and compatibility feedback
-
-`next-route-kit` is built for production Next.js App Router APIs that repeat
-authentication, validation, error mapping, or response-envelope policy. Adopt it
-incrementally by migrating one representative Route Handler, then extend the
-shared Factory as the pattern proves useful.
-
-When reporting a migration or compatibility result, include your Next.js version,
-runtime, route shape, and the API or documentation area involved. Submit the
-result through the [compatibility and migration issue form](https://github.com/tech-zjf/next-route-kit/issues/new/choose);
-these reports directly improve the compatibility matrix and public API.
-
 ## Build a shared route scope
 
 Put shared policy in an ordinary server module. Nothing is registered in
@@ -155,7 +144,7 @@ Put shared policy in an ordinary server module. Nothing is registered in
 
 ```ts
 // src/server/routes.ts
-import { apiResponsePlugin, createRoute, unauthorized, type AnyRouteContext, type Guard, type RouteMiddleware } from 'next-route-kit'
+import { apiResponsePlugin, createRoute, unauthorized } from 'next-route-kit'
 
 // Application-owned response codes stay in the application, not in the package.
 const ResponseCode = {
@@ -163,48 +152,36 @@ const ResponseCode = {
     INTERNAL_ERROR: { code: 'INTERNAL_ERROR', msg: 'Internal server error' },
 } as const
 
-// The request-local shape is explicit and is shared by this Factory scope.
-type ApiLocals = {
-    requestId: string
-    startedAt: number
-    userId?: string
-}
-
-type ApiContext = AnyRouteContext<ApiLocals>
-
-// Middleware adds values that should be available to the rest of this request.
-const requestContext: RouteMiddleware<ApiContext> = {
+// Provider output becomes required locals in every downstream Handler.
+const requestContext = {
     name: 'request-context',
-    use(context, next) {
-        context.locals.requestId = context.request.headers.get('x-request-id') ?? crypto.randomUUID()
-        context.locals.startedAt = Date.now()
-        return next()
+    provide(context) {
+        return {
+            requestId: context.request.headers.get('x-request-id') ?? crypto.randomUUID(),
+            startedAt: Date.now(),
+        }
     },
-}
+} as const
 
-// Guards run before body resolution and can populate authenticated locals.
-const requireUser: Guard<ApiContext> = {
+// Authentication providers run before body resolution and extend locals on success.
+const requireUser = {
     name: 'authentication',
-    canActivate(context) {
+    provide(context) {
         if (context.request.headers.get('authorization') !== 'Bearer sample-token') {
             throw unauthorized()
         }
 
-        context.locals.userId = 'viewer-demo'
-        return true
+        return { userId: 'viewer-demo' }
     },
-}
+} as const
 
 // Register cross-cutting policy once on the base Factory.
-export const apiRoute = createRoute<ApiLocals>({
-    middleware: [requestContext],
+export const apiRoute = createRoute({
     plugins: [apiResponsePlugin({ success: ResponseCode.SUCCESS, systemError: ResponseCode.INTERNAL_ERROR })],
-})
+}).withLocals(requestContext)
 
 // Derived scopes inherit the base policy without mutating it.
-export const authenticatedRoute = apiRoute.extend({
-    guards: [requireUser],
-})
+export const authenticatedRoute = apiRoute.withLocals(requireUser)
 ```
 
 `extend()` returns a new immutable scope. Global middleware, guards,
@@ -310,16 +287,19 @@ injection, or a replacement router.
 
 ## Configuration
 
-| Option             | Responsibility                                                         |
-| ------------------ | ---------------------------------------------------------------------- |
-| `middleware`       | request ID, logging, CORS, and request-local values; call `next()`     |
-| `guards`           | authentication and authorization; return `false`, `Response`, or throw |
-| `pipes`            | validate/transform each declared body or query argument                |
-| `interceptors`     | response envelope, timing, cache, and tracing                          |
-| `exceptionFilters` | convert known errors to a stable `Response`                            |
-| `plugins`          | package reusable contributions to the same stages                      |
-| `response`         | serialize plain values; native `Response` passes through               |
-| `runtime`          | declare `nodejs` or `edge` for plugin diagnostics                      |
+| Option             | Responsibility                                                           |
+| ------------------ | ------------------------------------------------------------------------ |
+| `middleware`       | logging, CORS, and timing around the full request chain; call `next()`   |
+| `guards`           | authentication and authorization; return `false`, `Response`, or throw   |
+| `withLocals`       | run a provider and add its actual output to downstream Handler locals    |
+| `pipes`            | validate/transform each declared body or query argument                  |
+| `interceptors`     | advanced result transforms, envelopes, or caching around input/Handler   |
+| `exceptionFilters` | convert known errors to a stable `Response`                              |
+| `plugins`          | package reusable contributions to the same stages                        |
+| `response`         | serialize plain values; native `Response` passes through                 |
+| `runtime`          | declare `nodejs` or `edge` for plugin diagnostics                        |
+| `maxBodyBytes`     | automatic body byte limit; 1 MiB by default and only tighter in children |
+| `nativeResponse`   | set `reject` to prevent native Responses bypassing the serializer        |
 
 A route adds only optional `body`, optional `query`, and `handler`. Params
 are already in `context.params`. Headers and the URL stay on `request`.
@@ -506,10 +486,10 @@ The execution rules are deliberate:
   short-circuits Interceptors and the Handler but still passes through the outer
   Middleware/Response boundary.
 - Errors from params hydration, Middleware, Guards, resolvers, Pipes,
-  Interceptors, or the Handler go to ExceptionFilters. The first Filter that
+  Interceptors, the Handler, or the Serializer go to ExceptionFilters. The first Filter that
   returns a Response wins.
-- A native `Response` returned by a Handler bypasses the default serializer and
-  keeps its status, headers, and body.
+- A native `Response` returned by a Handler bypasses the serializer by default.
+  Set `nativeResponse: 'reject'` on a strict JSON scope to prohibit that bypass.
 
 See the [detailed plugin guide](docs/en/user-guide/plugins.md) for every
 contribution contract and the [API reference](docs/en/user-guide/api-reference.md)
@@ -525,8 +505,8 @@ the standalone `zodExceptionFilter` on the same route:
 
 ```ts
 import { z } from 'zod'
-import { apiResponsePlugin, createRoute, jsonBody } from 'next-route-kit'
-import { ZodValidationError, zodPipe } from '@next-route-kit/zod'
+import { apiResponsePlugin, createRoute } from 'next-route-kit'
+import { ZodValidationError, zodBody } from '@next-route-kit/zod'
 
 const schema = z.object({ title: z.string().min(1) })
 const ResponseCode = {
@@ -536,7 +516,6 @@ const ResponseCode = {
 } as const
 
 const route = createRoute({
-    pipes: [zodPipe(schema, { appliesTo: 'body' })],
     plugins: [
         apiResponsePlugin({
             success: ResponseCode.SUCCESS,
@@ -556,7 +535,7 @@ const route = createRoute({
 })
 
 export const POST = route({
-    body: jsonBody<z.input<typeof schema>>(),
+    body: zodBody(schema),
     handler: (_request, { body }) => ({ title: body.title }),
 })
 ```

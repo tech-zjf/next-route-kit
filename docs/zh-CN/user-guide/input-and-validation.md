@@ -18,6 +18,36 @@ export const POST = route({
 Guard 会先执行。声明 `body` 后，Handler 应使用命名的 `body` 值，因为底层
 Request 流可能已经被解析器消费。
 
+自动 Body Resolver 默认最多读取 1 MiB。可以在 Factory 或单个 Route 上设置更小的
+`maxBodyBytes`；子作用域不能放宽继承上限。需要更大 JSON 上限时创建独立 Factory：
+
+```ts
+const largeJsonRoute = createRoute({ maxBodyBytes: 5 * 1024 * 1024 })
+```
+
+流、Multipart 和上传不要通过自动 Body Resolver，继续使用原生 Handler。
+
+## Schema-bound Body 和 Query
+
+选择 Zod 时，优先使用一个声明同时完成解析、校验、转换和 Handler 类型推导：
+
+```ts
+import { z } from 'zod'
+import { zodBody, zodQuery } from '@next-route-kit/zod'
+
+const bodySchema = z.object({ count: z.coerce.number().int().positive() })
+const querySchema = z.object({ preview: z.enum(['true', 'false']).optional() })
+
+export const POST = route({
+    body: zodBody(bodySchema),
+    query: zodQuery(querySchema),
+    handler: (_request, { body, query }) => service.create(body.count, query.preview),
+})
+```
+
+`zodPipe()` 继续用于 Factory 级统一校验、跨多个 Source 的高级转换，或者已有
+`jsonBody()` / 自定义 Source 的项目。
+
 ## Query
 
 ```ts
@@ -79,7 +109,8 @@ const validateBody: Pipe = {
 const route = createRoute({ pipes: [validateBody] })
 ```
 
-Core 不绑定校验库。可选的 `@next-route-kit/zod` 包提供 `zodPipe()`；不使用统一
+Core 不绑定校验库。可选的 `@next-route-kit/zod` 包提供 `zodBody()`、`zodQuery()`
+和 `zodPipe()`；不使用统一
 响应外壳的 Route 还可以选择 `zodExceptionFilter()`。如果 Route 使用
 `apiResponsePlugin()`，应通过它的可选 `mapError` 映射 `ZodValidationError`，这样
 校验异常仍保持 `{ code, msg, data }` 契约。一个作用域同时校验 Body、Query 时使用

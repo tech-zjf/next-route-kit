@@ -1,5 +1,12 @@
 # @next-route-kit/fixture-next15
 
+## 0.1.4
+
+### Patch Changes
+
+- Updated dependencies
+    - next-route-kit@0.2.0
+
 ## 0.1.3
 
 ### Patch Changes

@@ -8,23 +8,23 @@ npm install @next-route-kit/zod zod
 
 ```ts
 import { z } from 'zod'
-import { createRoute, jsonBody } from 'next-route-kit'
-import { zodExceptionFilter, zodPipe } from '@next-route-kit/zod'
+import { createRoute } from 'next-route-kit'
+import { zodBody, zodExceptionFilter } from '@next-route-kit/zod'
 
 const schema = z.object({ name: z.string().min(1) })
 
-const route = createRoute({
-    pipes: [zodPipe(schema, { appliesTo: 'body' })],
-    exceptionFilters: [zodExceptionFilter({ status: 422 })],
-})
+const route = createRoute({ exceptionFilters: [zodExceptionFilter({ status: 422 })] })
 
 export const POST = route({
-    body: jsonBody<z.input<typeof schema>>(),
+    body: zodBody(schema),
     handler: (_request, { body }) => ({ name: body.name }),
 })
 ```
 
-`zodPipe(schema)` implements Core's `Pipe` contract and receives
+`zodBody(schema)` and `zodQuery(schema)` bind parsing, validation,
+transformation, and Handler output inference to one schema declaration.
+`zodPipe(schema)` remains available for Factory-wide or advanced transformations;
+it implements Core's `Pipe` contract and receives
 `ArgumentMetadata`. It validates each resolved argument. Use
 `{ appliesTo: 'body' }` or `{ appliesTo: 'query' }` when one scope declares
 more than one schema.

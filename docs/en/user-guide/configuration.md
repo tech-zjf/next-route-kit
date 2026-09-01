@@ -5,14 +5,14 @@
 ## Application scope
 
 ```ts
-const apiRoute = createRoute<ApiLocals>({
-    middleware: [requestContext],
+const apiRoute = createRoute({
+    middleware: [requestLogger],
     guards: [requireApiKey],
     pipes: [trimInput],
     interceptors: [responseEnvelope],
     exceptionFilters: [apiExceptionFilter],
     response: jsonResponse(),
-})
+}).withLocals(requestContext)
 ```
 
 Every route created from `apiRoute` inherits this policy.
@@ -32,6 +32,28 @@ const adminRoute = authenticatedRoute.extend({
 `extend()` is immutable. The parent remains unchanged, so a public route
 cannot accidentally inherit an admin guard.
 
+## Runtime-backed locals
+
+Use actual provider output when downstream Handlers require authenticated or
+tenant-local fields:
+
+```ts
+const sessionRoute = apiRoute.withLocals({
+    name: 'session',
+    async provide(context) {
+        const session = await authenticate(context.request)
+        if (!session) throw unauthorized()
+        return { userId: session.userId, organizationId: session.organizationId }
+    },
+})
+```
+
+The provider runs in the Guard stage before automatic body parsing. The Handler
+runs only after the provider returns, so `locals.userId` and
+`locals.organizationId` are required types. Do not use
+`createRoute<RequiredLocals>()` to describe fields that no runtime operation
+establishes.
+
 Components compose as:
 
 ```text
@@ -47,11 +69,13 @@ inherited serializer.
 | Option             | Purpose                                    |
 | ------------------ | ------------------------------------------ |
 | `runtime`          | Node/Edge plugin compatibility declaration |
+| `maxBodyBytes`     | automatic body read limit                  |
+| `nativeResponse`   | pass through or reject native Responses    |
 | `plugins`          | reusable contributions                     |
-| `middleware`       | outer processing and request-local setup   |
+| `middleware`       | outer processing around the complete chain |
 | `guards`           | authentication and authorization           |
 | `pipes`            | body/query validation and transformation   |
-| `interceptors`     | envelopes, timing, caching, tracing        |
+| `interceptors`     | advanced input/Handler result processing   |
 | `exceptionFilters` | error to `Response` conversion             |
 | `response`         | JSON serializer shorthand                  |
 | `body`             | optional route body resolver               |

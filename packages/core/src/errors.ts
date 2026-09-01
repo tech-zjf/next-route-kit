@@ -1,6 +1,8 @@
+export type HttpErrorCode = string | number
+
 export interface HttpErrorOptions {
     readonly status: number
-    readonly code: string
+    readonly code: HttpErrorCode
     readonly message: string
     readonly details?: unknown
     readonly cause?: unknown
@@ -8,7 +10,7 @@ export interface HttpErrorOptions {
 
 export class HttpError extends Error {
     readonly status: number
-    readonly code: string
+    readonly code: HttpErrorCode
     readonly details: unknown
 
     constructor(options: HttpErrorOptions) {
@@ -61,6 +63,13 @@ export class DuplicateInterceptorNextError extends Error {
     constructor(name: string) {
         super(`Route interceptor "${name}" called next() more than once`)
         this.name = 'DuplicateInterceptorNextError'
+    }
+}
+
+export class NativeResponseNotAllowedError extends Error {
+    constructor() {
+        super('This Route Factory requires successful results to use the configured response serializer')
+        this.name = 'NativeResponseNotAllowedError'
     }
 }
 

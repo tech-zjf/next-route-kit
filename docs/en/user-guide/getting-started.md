@@ -48,29 +48,21 @@ before middleware and exposed as `context.params`.
 ```ts
 import { unauthorized } from 'next-route-kit'
 
-const authenticatedRoute = route.extend({
-    guards: [
-        {
-            name: 'authentication',
-            canActivate(context) {
-                if (context.request.headers.get('authorization') !== 'Bearer sample-token') {
-                    throw unauthorized()
-                }
+const authenticatedRoute = route.withLocals({
+    name: 'authentication',
+    provide(context) {
+        if (context.request.headers.get('authorization') !== 'Bearer sample-token') {
+            throw unauthorized()
+        }
 
-                context.locals.userId = 'viewer-demo'
-                return true
-            },
-        },
-    ],
+        return { userId: 'viewer-demo' }
+    },
 })
 ```
 
-Define request-local values with the Factory generic:
-
-```ts
-type ApiLocals = { userId?: string; requestId: string }
-const apiRoute = createRoute<ApiLocals>({ middleware: [requestContext] })
-```
+The provider's actual output is inferred into every downstream Handler's locals,
+so there is no separate optional `userId` declaration or type assertion. Keep a
+plain Guard for authorization checks that do not establish new locals.
 
 ## Add body or query only when needed
 

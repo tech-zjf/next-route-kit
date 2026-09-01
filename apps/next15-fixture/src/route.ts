@@ -5,30 +5,34 @@ import {
     unauthorized,
     type AnyRouteContext,
     type ExceptionFilter,
-    type Guard,
     type Interceptor,
+    type LocalsProvider,
     type Pipe,
-    type RouteMiddleware,
 } from 'next-route-kit'
 
-export type FixtureLocals = {
+export type RequestLocals = {
     requestId: string
     startedAt: number
-    userId?: string
 }
 
-type FixtureContext = AnyRouteContext<FixtureLocals>
+export type AuthenticatedLocals = RequestLocals & {
+    userId: string
+}
 
-const requestIdMiddleware: RouteMiddleware<FixtureContext> = {
-    name: 'request-id',
-    use(context, next) {
-        context.locals.requestId = context.request.headers.get('x-request-id') ?? 'fixture-generated-request'
-        context.locals.startedAt = Date.now()
-        return next()
+type RequestContext = AnyRouteContext<RequestLocals>
+type AuthenticatedContext = AnyRouteContext<AuthenticatedLocals>
+
+const requestContextProvider: LocalsProvider<Record<string, never>, RequestLocals> = {
+    name: 'request-context',
+    provide(context) {
+        return {
+            requestId: context.request.headers.get('x-request-id') ?? 'fixture-generated-request',
+            startedAt: Date.now(),
+        }
     },
 }
 
-const responseEnvelopeInterceptor: Interceptor<FixtureContext> = {
+const responseEnvelopeInterceptor: Interceptor<RequestContext> = {
     name: 'response-envelope',
     async intercept(context, next) {
         const value = await next()
@@ -41,14 +45,14 @@ const responseEnvelopeInterceptor: Interceptor<FixtureContext> = {
             data: value,
             meta: {
                 requestId: context.locals.requestId,
-                ...(context.locals.userId === undefined ? {} : { userId: context.locals.userId }),
+                ...('userId' in context.locals ? { userId: context.locals.userId } : {}),
                 durationMs: Date.now() - context.locals.startedAt,
             },
         }
     },
 }
 
-const requestExceptionFilter: ExceptionFilter<FixtureContext> = {
+const requestExceptionFilter: ExceptionFilter<RequestContext> = {
     name: 'request-exception-filter',
     catch(error, context) {
         if (!(error instanceof HttpError)) {
@@ -70,19 +74,18 @@ const requestExceptionFilter: ExceptionFilter<FixtureContext> = {
     },
 }
 
-const authenticationGuard: Guard<FixtureContext> = {
+const authenticationProvider: LocalsProvider<RequestLocals, { userId: string }> = {
     name: 'authentication',
-    canActivate(context) {
+    provide(context) {
         if (context.request.headers.get('authorization') !== 'Bearer fixture-token') {
             throw unauthorized()
         }
 
-        context.locals.userId = 'viewer-fixture'
-        return true
+        return { userId: 'viewer-fixture' }
     },
 }
 
-const resourceValidationPipe: Pipe<unknown, unknown, FixtureContext> = {
+const resourceValidationPipe: Pipe<unknown, unknown, AuthenticatedContext> = {
     name: 'resource-validation',
     transform(value, metadata) {
         if (metadata.type !== 'body') {
@@ -104,18 +107,17 @@ const resourceValidationPipe: Pipe<unknown, unknown, FixtureContext> = {
     },
 }
 
-export const route = createRoute<FixtureLocals>({
-    middleware: [requestIdMiddleware],
-    interceptors: [responseEnvelopeInterceptor],
-    exceptionFilters: [requestExceptionFilter],
-    response: jsonResponse({
-        headers: { 'x-route-kit': 'fixture' },
-    }),
-})
+export const route = createRoute()
+    .withLocals(requestContextProvider)
+    .extend({
+        interceptors: [responseEnvelopeInterceptor],
+        exceptionFilters: [requestExceptionFilter],
+        response: jsonResponse({
+            headers: { 'x-route-kit': 'fixture' },
+        }),
+    })
 
-export const authenticatedRoute = route.extend({
-    guards: [authenticationGuard],
-})
+export const authenticatedRoute = route.withLocals(authenticationProvider)
 
 export const resourceRoute = authenticatedRoute.extend({
     pipes: [resourceValidationPipe],

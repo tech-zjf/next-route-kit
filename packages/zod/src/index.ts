@@ -1,6 +1,7 @@
-export { ZodExceptionFilter, ZodPipe, ZodValidationError, zodExceptionFilter, zodPipe } from './zod.js'
+export { ZodExceptionFilter, ZodPipe, ZodValidationError, zodBody, zodExceptionFilter, zodPipe, zodQuery } from './zod.js'
 export type {
     ZodExceptionFilterOptions,
+    ZodInputOptions,
     ZodOutput,
     ZodPipeOptions,
     ZodSafeParseFailure,

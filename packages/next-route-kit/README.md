@@ -12,7 +12,8 @@ or the [repository README](https://github.com/tech-zjf/next-route-kit#readme).
 
 ## 5-minute integration
 
-Try one JSON endpoint first. No `next.config.ts` registration is required.
+Add the shared route foundation to any JSON endpoint. No `next.config.ts`
+registration is required.
 
 ```ts
 // app/api/resources/route.ts
@@ -27,16 +28,9 @@ export const POST = route({
 ```
 
 `request` remains the native Web `Request`, and special endpoints can stay plain
-Next.js handlers. Migrate one route at a time; see the [migration guide](https://github.com/tech-zjf/next-route-kit/blob/main/docs/en/user-guide/migration.md)
-for a before/after example.
-
-## Production adoption and compatibility feedback
-
-If your App Router project repeats authentication, validation, error mapping, or
-response-envelope policy, migrate one representative route and extend the shared
-Factory as the pattern proves useful. For a migration or compatibility report,
-include your Next.js version, runtime, migrated route shape, and the relevant API
-or documentation area in the [compatibility and migration issue form](https://github.com/tech-zjf/next-route-kit/issues/new/choose).
+Next.js handlers. Existing applications can migrate route by route; see the
+[migration guide](https://github.com/tech-zjf/next-route-kit/blob/main/docs/en/user-guide/migration.md)
+for the complete mapping.
 
 ## Native route API
 
@@ -88,7 +82,8 @@ native `Request`/`Response` boundary.
 
 ```ts
 const apiRoute = createRoute({ middleware, interceptors, exceptionFilters })
-const authenticatedRoute = apiRoute.extend({ guards: [requireUser] })
+const authenticatedRoute = apiRoute.withLocals(sessionProvider)
+const adminRoute = authenticatedRoute.extend({ guards: [requireAdmin] })
 ```
 
 `extend()` returns a new immutable scope. It does not mutate the parent and
@@ -123,11 +118,12 @@ export const POST = apiRoute({
 })
 ```
 
-Plain object results and `ApiException` values are converted to one
-`{ code, msg, data }` envelope. `data` is always an object. The code constants
-remain application-owned, so a client can handle common auth/quota codes
-globally and feature-specific codes locally. Native `Response` values pass
-through unchanged. Unexpected errors use the configured system response and are
+Handler results and `ApiException` values are converted to one
+`{ code, msg, data }` envelope. Codes may be strings or numbers, and `data`
+preserves objects, arrays, primitives, and `null`. The code constants remain
+application-owned, so a client can handle common auth/quota codes globally and
+feature-specific codes locally. Native `Response` values pass through by default;
+set `nativeResponse: 'reject'` on a strict JSON Factory. Unexpected errors use the configured system response and are
 reported with `console.error` unless `onUnknownError` supplies an application
 reporter.
 
@@ -146,7 +142,13 @@ Next params → Middleware → Guard → Interceptor enter
 
 Errors go through `ExceptionFilter.catch()`. The package supplies a default
 filter for `HttpError` and malformed JSON, plus a default JSON serializer. A
-native `Response` returned by a handler passes through unchanged.
+native `Response` returned by a handler passes through unchanged unless the
+Factory uses the strict response policy.
+
+Automatic body resolvers enforce a 1 MiB default limit. Configure
+`maxBodyBytes` on a dedicated Factory when a JSON domain needs a different
+explicit ceiling. Use `withLocals(provider)` to derive required Handler locals
+from values actually produced before body parsing.
 
 See the root README for RESTful examples and the user guides for API details.
 

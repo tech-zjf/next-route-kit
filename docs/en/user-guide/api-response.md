@@ -23,7 +23,7 @@ export const ResponseCode = {
 } as const
 ```
 
-`code` is the stable business contract. `status`, when present, is only the
+`code` can be a string or number and is the stable business contract. `status`, when present, is only the
 HTTP transport status used for that exception; it is not emitted as the API
 business code.
 
@@ -48,8 +48,11 @@ export const apiRoute = createRoute({
     plugins: [apiContract],
 })
 
-export const authenticatedRoute = apiRoute.extend({
-    guards: [requireUser],
+export const authenticatedRoute = apiRoute.withLocals({
+    name: 'session',
+    async provide(context) {
+        return { userId: await requireUser(context.request) }
+    },
 })
 
 type CreateResourceInput = {
@@ -109,8 +112,9 @@ An expected business error becomes:
 }
 ```
 
-`data` is always an object. For a list endpoint, return an object such as
-`{ items, total, nextCursor }`, or provide `mapData` once in the plugin:
+`data` preserves the Handler result exactly, including objects, arrays,
+primitives, and `null`. To enforce an `{ items }` list shape, configure
+`mapData` once in the plugin:
 
 ```ts
 const apiContract = apiResponsePlugin({
@@ -120,16 +124,13 @@ const apiContract = apiResponsePlugin({
 })
 ```
 
-Primitive results are represented as `{ value }` by the default mapper. This
-keeps the contract predictable, while `mapData` makes the intended list or
-pagination shape visible at the shared boundary.
+Without `mapData`, the plugin does not change the business data shape.
 
 ### Use a different application protocol
 
-The envelope plugin is an opinionated adapter, not a requirement of the
-pipeline. If an application uses numeric codes, array data, or different field
-names, keep that protocol in an application-owned serializer and exception
-filter:
+The built-in plugin supports numeric codes and arbitrary `data`. Use an
+application-owned serializer and exception filter only when the field names or
+overall structure differ from `{ code, msg, data }`:
 
 ```ts
 const applicationResponsePlugin: RoutePlugin = {
@@ -150,10 +151,25 @@ const applicationResponsePlugin: RoutePlugin = {
 const route = createRoute({ plugins: [applicationResponsePlugin] })
 ```
 
-This changes the application's protocol without changing the Core pipeline or
-requiring the built-in `apiResponsePlugin` to accept every possible business
-convention. Keep the serializer and exception filter together so success and
-error responses remain one coherent contract.
+Keep the serializer and exception filter together so success and error responses
+remain one coherent contract without changing the Core pipeline.
+
+### Strict JSON scopes
+
+Native `Response` values pass through by default for streams, redirects, and
+`204` responses. When a JSON API scope requires every successful value to use
+the configured serializer, set:
+
+```ts
+const strictApiRoute = createRoute({
+    nativeResponse: 'reject',
+    plugins: [apiContract],
+})
+```
+
+This rejects native Responses returned by Middleware, Guards, or Handlers and
+lets the shared error boundary map the violation to the system response.
+Responses returned by ExceptionFilters remain valid.
 
 ## Global and business error handling
 
@@ -169,8 +185,8 @@ if (payload.code === ResponseCode.QUOTA_EXCEEDED.code) {
 
 The client request layer can handle common codes such as authentication,
 permission, quota, and system failure globally. A feature can register a
-handler for its own codes without guessing whether the server returned a
-number, string, `message`, or `msg` field.
+handler for its own codes. One application should consistently choose string or
+numeric business codes and one message field.
 
 Unexpected errors are converted to `systemError`; their internal message is not
 sent to the client. By default they are reported with `console.error` so a 500
@@ -186,10 +202,9 @@ envelope with `mapError`:
 
 ```ts
 import { apiResponsePlugin, createRoute } from 'next-route-kit'
-import { ZodValidationError, zodPipe } from '@next-route-kit/zod'
+import { ZodValidationError, zodBody } from '@next-route-kit/zod'
 
 const apiRoute = createRoute({
-    pipes: [zodPipe(schema, { appliesTo: 'body' })],
     plugins: [
         apiResponsePlugin({
             success: ResponseCode.SUCCESS,
@@ -206,6 +221,11 @@ const apiRoute = createRoute({
             },
         }),
     ],
+})
+
+export const POST = apiRoute({
+    body: zodBody(schema),
+    handler: (_request, { body }) => service.create(body),
 })
 ```
 

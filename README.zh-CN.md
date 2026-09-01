@@ -58,7 +58,8 @@ export const POST = apiRoute({
 ```
 
 成功响应始终是 `{ code: 'OK', msg: '成功', data: { resourceId: 'resource-demo' } }`；
-业务异常使用应用自己维护的响应码，`data` 仍然保持对象。前端因此可以用一份稳定契约
+业务异常使用应用自己维护的字符串或数字响应码，`data` 保留业务返回的对象、数组、
+基本类型或 `null`。前端因此可以用一份稳定契约
 统一处理登录、权限、配额等全局错误，再由具体页面处理自己的业务弹窗。详见
 [统一 API 响应指南](docs/zh-CN/user-guide/api-response.md)，其中包含通用的迁移和列表、
 异常示例。
@@ -134,16 +135,6 @@ export const POST = apiRoute({
 迁移可以渐进进行。具体的策略映射，以及应该继续使用普通 Handler 的场景，见
 [迁移指南](docs/zh-CN/user-guide/migration.md)。
 
-## 生产项目接入与兼容性反馈
-
-`next-route-kit` 面向真实的 Next.js App Router API，解决鉴权、校验、错误映射和响应
-封装等横切策略的重复问题。建议从一条有代表性的 Route Handler 开始渐进迁移，再根据
-实际接口形态扩展共享 Factory。
-
-如果要报告迁移或兼容性结果，请提供 Next.js 版本、runtime、接口形态，以及涉及的 API
-或文档位置，并通过[兼容性与迁移 Issue](https://github.com/tech-zjf/next-route-kit/issues/new/choose)
-提交。这些信息会直接用于维护兼容性矩阵和改进公开 API。
-
 ## 建立共享策略作用域
 
 在普通服务端模块中创建共享策略。不需要修改 `next.config.ts`，包也不会扫描
@@ -151,7 +142,7 @@ export const POST = apiRoute({
 
 ```ts
 // src/server/routes.ts
-import { apiResponsePlugin, createRoute, unauthorized, type AnyRouteContext, type Guard, type RouteMiddleware } from 'next-route-kit'
+import { apiResponsePlugin, createRoute, unauthorized } from 'next-route-kit'
 
 // 响应码由业务项目维护，包只负责统一传输结构。
 const ResponseCode = {
@@ -159,48 +150,36 @@ const ResponseCode = {
     INTERNAL_ERROR: { code: 'INTERNAL_ERROR', msg: '系统错误' },
 } as const
 
-// 请求级共享数据的类型在这里集中声明。
-type ApiLocals = {
-    requestId: string
-    startedAt: number
-    userId?: string
-}
-
-type ApiContext = AnyRouteContext<ApiLocals>
-
-// Middleware 为当前请求准备 requestId 等共享值。
-const requestContext: RouteMiddleware<ApiContext> = {
+// Provider 返回什么，后续 Handler 的 locals 就获得什么必填类型。
+const requestContext = {
     name: 'request-context',
-    use(context, next) {
-        context.locals.requestId = context.request.headers.get('x-request-id') ?? crypto.randomUUID()
-        context.locals.startedAt = Date.now()
-        return next()
+    provide(context) {
+        return {
+            requestId: context.request.headers.get('x-request-id') ?? crypto.randomUUID(),
+            startedAt: Date.now(),
+        }
     },
-}
+} as const
 
-// Guard 在解析 Body 前执行，并把认证结果写入 locals。
-const requireUser: Guard<ApiContext> = {
+// 认证 Provider 在解析 Body 前执行；成功返回值会继续扩展 locals 类型。
+const requireUser = {
     name: 'authentication',
-    canActivate(context) {
+    provide(context) {
         if (context.request.headers.get('authorization') !== 'Bearer sample-token') {
             throw unauthorized()
         }
 
-        context.locals.userId = 'viewer-demo'
-        return true
+        return { userId: 'viewer-demo' }
     },
-}
+} as const
 
 // 在基础 Factory 上注册一次横切策略。
-export const apiRoute = createRoute<ApiLocals>({
-    middleware: [requestContext],
+export const apiRoute = createRoute({
     plugins: [apiResponsePlugin({ success: ResponseCode.SUCCESS, systemError: ResponseCode.INTERNAL_ERROR })],
-})
+}).withLocals(requestContext)
 
 // 派生作用域继承基础策略，且不会修改父 Factory。
-export const authenticatedRoute = apiRoute.extend({
-    guards: [requireUser],
-})
+export const authenticatedRoute = apiRoute.withLocals(requireUser)
 ```
 
 `extend()` 会生成新的不可变作用域，不会修改父 Factory，也不需要每个接口重复
@@ -303,16 +282,19 @@ Guard 在声明的 Body 解析之前执行，因此未登录请求不会先解�
 
 ## 配置选项
 
-| 选项               | 作用                                                            |
-| ------------------ | --------------------------------------------------------------- |
-| `middleware`       | Request ID、日志、CORS、请求级共享值；继续执行需要调用 `next()` |
-| `guards`           | 鉴权、权限、API Key；可以返回 `false`、`Response` 或抛异常      |
-| `pipes`            | 校验或转换声明的 Body/Query 参数                                |
-| `interceptors`     | 统一响应、耗时、缓存、链路追踪                                  |
-| `exceptionFilters` | 把已知异常转换成稳定 `Response`                                 |
-| `plugins`          | 把可复用组件打包成插件                                          |
-| `response`         | 序列化普通返回值，原生 `Response` 直接透传                      |
-| `runtime`          | 声明 `nodejs` 或 `edge`，提前诊断插件兼容性                     |
+| 选项               | 作用                                                         |
+| ------------------ | ------------------------------------------------------------ |
+| `middleware`       | 包住完整请求链的日志、CORS 和计时；继续执行需要调用 `next()` |
+| `guards`           | 鉴权、权限、API Key；可以返回 `false`、`Response` 或抛异常   |
+| `withLocals`       | 运行 Provider，并把真实返回值加入后续 Handler 的 locals 类型 |
+| `pipes`            | 校验或转换声明的 Body/Query 参数                             |
+| `interceptors`     | 包住输入和 Handler 的高级结果转换、统一响应或缓存            |
+| `exceptionFilters` | 把已知异常转换成稳定 `Response`                              |
+| `plugins`          | 把可复用组件打包成插件                                       |
+| `response`         | 序列化普通返回值，原生 `Response` 直接透传                   |
+| `runtime`          | 声明 `nodejs` 或 `edge`，提前诊断插件兼容性                  |
+| `maxBodyBytes`     | 自动 Body Resolver 的字节上限，默认 1 MiB，子作用域只能收紧  |
+| `nativeResponse`   | 使用 `reject` 禁止原生 Response 绕过 serializer              |
 
 Route 只额外增加可选的 `body`、可选的 `query` 和 `handler`。Params 已在
 `context.params` 中；Header 和 URL 留在 `request` 上。只有重复使用确实有价值
@@ -490,9 +472,10 @@ Factory 编译阶段（只执行一次）
 - Middleware 和 Interceptor 是嵌套调用：`next()` 前的代码正向执行，`await next()` 后的代码逆向执行；
 - Guard 可以返回 `false`、抛异常或返回 `Response`。返回 Response 会短路 Interceptor 和 Handler，
   但仍会经过外层 Middleware/Response 边界；
-- Params hydration、Middleware、Guard、Resolver、Pipe、Interceptor 或 Handler 抛出的异常都会进入
+- Params hydration、Middleware、Guard、Resolver、Pipe、Interceptor、Handler 或 Serializer 抛出的异常都会进入
   ExceptionFilter，第一个返回 Response 的 Filter 获胜；
-- Handler 返回原生 `Response` 时绕过默认 serializer，并保留原有 status、headers 和 body。
+- Handler 返回原生 `Response` 时默认绕过 serializer；`nativeResponse: 'reject'` 可以为严格 JSON
+  作用域禁止这种绕过。
 
 完整贡献契约见[插件详细指南](docs/zh-CN/user-guide/plugins.md)，全部公开类型见
 [API Reference](docs/zh-CN/user-guide/api-reference.md)。
@@ -506,8 +489,8 @@ Factory 编译阶段（只执行一次）
 
 ```ts
 import { z } from 'zod'
-import { apiResponsePlugin, createRoute, jsonBody } from 'next-route-kit'
-import { ZodValidationError, zodPipe } from '@next-route-kit/zod'
+import { apiResponsePlugin, createRoute } from 'next-route-kit'
+import { ZodValidationError, zodBody } from '@next-route-kit/zod'
 
 const schema = z.object({ title: z.string().min(1) })
 const ResponseCode = {
@@ -517,7 +500,6 @@ const ResponseCode = {
 } as const
 
 const route = createRoute({
-    pipes: [zodPipe(schema, { appliesTo: 'body' })],
     plugins: [
         apiResponsePlugin({
             success: ResponseCode.SUCCESS,
@@ -537,7 +519,7 @@ const route = createRoute({
 })
 
 export const POST = route({
-    body: jsonBody<z.input<typeof schema>>(),
+    body: zodBody(schema),
     handler: (_request, { body }) => ({ title: body.title }),
 })
 ```

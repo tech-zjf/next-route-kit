@@ -17,7 +17,9 @@ Middleware → Guard → Interceptor (enter) → Pipes → Handler
 → Interceptor (exit) → Response serialization
 ```
 
-`ExceptionFilter.catch()` can convert errors from the whole chain.
+`ExceptionFilter.catch()` can convert errors from the whole chain, including
+asynchronous response serialization failures. A pipeline can set
+`nativeResponse: 'reject'` when native Responses must not bypass its serializer.
 `RouteContext` contains the native `request`, hydrated `params`,
 request-local `locals`, and an adapter-owned `args` store. The Next adapter
 maps resolved arguments into named handler context properties, so normal

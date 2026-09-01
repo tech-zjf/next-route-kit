@@ -38,15 +38,19 @@
 
 ```ts
 // src/server/routes.ts
-export const apiRoute = createRoute<ApiLocals>({
-    middleware: [requestContext],
+export const apiRoute = createRoute({
     interceptors: [responseEnvelope],
     exceptionFilters: [apiExceptionFilter],
     response: jsonResponse(),
-})
+}).withLocals(requestContextProvider)
 
-export const authenticatedRoute = apiRoute.extend({
-    guards: [requireUser],
+export const authenticatedRoute = apiRoute.withLocals({
+    name: 'session',
+    async provide(context) {
+        const session = await authenticate(context.request)
+        if (!session) throw unauthorized()
+        return { userId: session.userId }
+    },
 })
 ```
 
@@ -65,14 +69,14 @@ export const GET = authenticatedRoute<{ id: string }>({
 
 其中：
 
-| 值      | 来源                                | 解决的问题                                            |
-| ------- | ----------------------------------- | ----------------------------------------------------- |
-| request | 原生 Web Request                    | Headers、URL、Cookie、流式 Body、原始请求仍可直接读取 |
-| params  | Next 动态路由参数                   | 不再每个 Handler 重复 await context.params            |
-| locals  | Middleware/Guard 写入的请求级上下文 | Request ID、userId、tenantId 等不再靠模糊的 state     |
-| body    | 仅在 Route 声明 body 时提供         | 需要时统一解析 JSON，不需要时不增加抽象               |
-| query   | 仅在 Route 声明 query 时提供        | 需要结构化 Query 时再使用，不强迫每个接口声明         |
-| meta    | Factory 生成的只读元信息            | 方法、路径和运行时诊断                                |
+| 值      | 来源                         | 解决的问题                                            |
+| ------- | ---------------------------- | ----------------------------------------------------- |
+| request | 原生 Web Request             | Headers、URL、Cookie、流式 Body、原始请求仍可直接读取 |
+| params  | Next 动态路由参数            | 不再每个 Handler 重复 await context.params            |
+| locals  | Provider 建立的请求级上下文  | Request ID、userId、tenantId 等不再靠模糊的 state     |
+| body    | 仅在 Route 声明 body 时提供  | 需要时统一解析 JSON，不需要时不增加抽象               |
+| query   | 仅在 Route 声明 query 时提供 | 需要结构化 Query 时再使用，不强迫每个接口声明         |
+| meta    | Factory 生成的只读元信息     | 方法、路径和运行时诊断                                |
 
 没有使用 body 或 query 的 Route 不会被迫写空的参数声明。Headers 和 URL 仍然
 从 request 上读取：
@@ -110,6 +114,10 @@ export const POST = authenticatedRoute({
 
 这不是把所有请求强行转换成 input。它只是把重复的 request.json()、一次性
 Body 缓存和对应的校验挂到一个明确的 body 位置。
+
+自动 Body Resolver 默认执行 1 MiB 字节上限；子作用域只能收紧上限。Zod 项目可以
+用 `zodBody(schema)` 或 `zodQuery(schema)` 把解析、校验、转换和 Handler 类型绑定在
+同一个声明中。
 
 ## 4. 分层和所有权
 

@@ -7,6 +7,7 @@
 ```ts
 const route = createRoute<TLocals>(config?)
 const child = route.extend(config)
+const authenticated = route.withLocals(provider)
 const handler = route<TParams, TBody, TQuery, TResult>(options)
 ```
 
@@ -21,6 +22,8 @@ Route 参数类型时，则使用默认的 `RouteParams` 结构。
 ```ts
 type RouteOptions = {
     runtime?: 'nodejs' | 'edge'
+    maxBodyBytes?: number
+    nativeResponse?: 'passthrough' | 'reject'
     middleware?: RouteMiddleware[]
     guards?: Guard[]
     pipes?: Pipe[]
@@ -38,6 +41,9 @@ type RouteOptions = {
 
 大多数接口只需要 `handler`。只有希望包自动解析并缓存值时，才增加
 `body` 或 `query`。
+
+自动 Body 解析默认限制为 1 MiB。继承作用域可以通过 `maxBodyBytes` 收紧但不能放宽。
+`nativeResponse: 'reject'` 用于要求所有正常返回值都经过 serializer 的严格 JSON 作用域。
 
 没有动态 Params 时，`jsonBody<T>()` 和 `query<T>()` 可以直接推导类型，不需要
 Route 泛型。动态 Params 与带类型的 Body/Query 同时出现时，按
@@ -69,6 +75,9 @@ type RouteHandlerContext = {
 
 Params 直接使用 `context.params`，Header、URL 和 Cookie 直接从原生
 `request` 上读取，不需要额外的 helper 声明。
+
+可选的 Zod 适配器提供 `zodBody(schema)` 和 `zodQuery(schema)`，直接把 Schema
+输出类型推导到 Handler。
 
 ## 组件契约
 
@@ -125,7 +134,8 @@ throw new ApiException(ResponseCode.RESOURCE_NOT_FOUND, {
 
 `apiResponsePlugin()` 会贡献成功响应 Interceptor 和异常 Exception Filter，统一
 输出 `{ code, msg, data }`，并使用配置的 `systemError` 兜底未知异常；原生
-`Response` 仍然直接透传。`ResponseCodeDefinition` 包含 `code`、`msg` 和可选的 HTTP
+`Response` 默认直接透传，也可以由严格作用域拒绝。`ResponseCodeDefinition` 包含字符串或
+数字 `code`、`msg` 和可选的 HTTP
 `status`；`ApiException` 支持可选的 `message`、`data`、`status`、`cause` 覆盖值。
 完整契约和迁移示例见[统一 API 响应指南](api-response.md)。
 
@@ -136,7 +146,7 @@ type ApiResponseErrorMapping = {
     code: ResponseCodeDefinition
     status?: number
     message?: string
-    data?: Readonly<Record<string, unknown>>
+    data?: unknown
 }
 ```
 

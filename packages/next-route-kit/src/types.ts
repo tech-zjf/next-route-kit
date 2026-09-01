@@ -69,6 +69,8 @@ export type RouteInputResolver<TParams extends RouteParamsConstraint<TParams> = 
 export interface RouteFactoryConfig<TLocals = DefaultRouteLocals> extends RouteConfig<AnyRouteContext<TLocals>, unknown> {
     /** Runtime target used for static plugin compatibility diagnostics. */
     readonly runtime?: RouteRuntime
+    /** Maximum bytes read by automatic body resolvers. Child scopes may only lower this value. */
+    readonly maxBodyBytes?: number
     /** User-facing alias for responseSerializer. */
     readonly response?: ResponseSerializer<unknown, AnyRouteContext<TLocals>>
 }
@@ -82,6 +84,8 @@ export interface RouteOptions<
 > extends RouteConfig<AnyRouteContext<TLocals>, TResult> {
     /** Route-level runtime target used for static plugin compatibility diagnostics. */
     readonly runtime?: RouteRuntime
+    /** Route-level automatic body limit. It may tighten, but not relax, the inherited limit. */
+    readonly maxBodyBytes?: number
     /** Optional automatic body parsing. Omit it to keep the native Request body API. */
     readonly body?: RouteInputDefinition<TBody, TParams, TLocals>
     /** Optional query parsing. Omit it to read request.url directly. */
@@ -101,10 +105,18 @@ export interface RouteFactory<TLocals = DefaultRouteLocals> {
     ): NextRouteHandler<TParams>
 
     extend(config: RouteFactoryConfig<TLocals>): RouteFactory<TLocals>
+
+    withLocals<TProvided extends object>(provider: LocalsProvider<TLocals, TProvided>): RouteFactory<TLocals & TProvided>
 }
 
 export interface RootRouteFactory {
     <TLocals = DefaultRouteLocals>(config?: RouteFactoryConfig<TLocals>): RouteFactory<TLocals>
+}
+
+export interface LocalsProvider<TLocals = DefaultRouteLocals, TProvided extends object = object> {
+    readonly name: string
+
+    provide(context: AnyRouteContext<TLocals>): MaybePromise<TProvided | Response>
 }
 
 export interface JsonResponseOptions<TContext extends RouteContext<any, any, any> = RouteContext<any, any, any>> {

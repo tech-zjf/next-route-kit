@@ -1,17 +1,17 @@
-import { HttpError, type AnyRouteContext, type ExceptionFilter } from '@next-route-kit/core'
+import { HttpError, type AnyRouteContext, type ExceptionFilter, type HttpErrorCode } from '@next-route-kit/core'
 
 /** An application-owned response code that is stable for clients to branch on. */
-export interface ResponseCodeDefinition {
-    readonly code: string
+export interface ResponseCodeDefinition<TCode extends HttpErrorCode = HttpErrorCode> {
+    readonly code: TCode
     readonly msg: string
     /** Optional transport status; business code and HTTP status remain separate. */
     readonly status?: number
 }
 
-export interface ApiExceptionOptions {
+export interface ApiExceptionOptions<TData = unknown> {
     readonly status?: number
     readonly message?: string
-    readonly data?: Readonly<Record<string, unknown>>
+    readonly data?: TData
     readonly cause?: unknown
 }
 
@@ -22,24 +22,22 @@ export interface ApiExceptionOptions {
  * API response plugin converts it into the application's `{ code, msg, data }`
  * contract at the Route boundary.
  */
-export class ApiException extends HttpError {
-    readonly responseCode: ResponseCodeDefinition
-    readonly data: Readonly<Record<string, unknown>>
+export class ApiException<TCode extends HttpErrorCode = HttpErrorCode, TData = unknown> extends HttpError {
+    readonly responseCode: ResponseCodeDefinition<TCode>
+    readonly data: TData | undefined
 
-    constructor(responseCode: ResponseCodeDefinition, options: ApiExceptionOptions = {}) {
-        const data = Object.freeze({ ...(options.data ?? {}) })
-
+    constructor(responseCode: ResponseCodeDefinition<TCode>, options: ApiExceptionOptions<TData> = {}) {
         super({
             status: options.status ?? responseCode.status ?? 400,
             code: responseCode.code,
             message: options.message ?? responseCode.msg,
-            details: data,
+            details: options.data,
             cause: options.cause,
         })
 
         this.name = 'ApiException'
         this.responseCode = responseCode
-        this.data = data
+        this.data = options.data
     }
 }
 
@@ -53,6 +51,22 @@ export class InvalidJsonBodyError extends HttpError {
             cause,
         })
         this.name = 'InvalidJsonBodyError'
+    }
+}
+
+/** Raised when an automatic body reader exceeds the configured byte limit. */
+export class PayloadTooLargeError extends HttpError {
+    readonly maxBytes: number
+
+    constructor(maxBytes: number) {
+        super({
+            status: 413,
+            code: 'PAYLOAD_TOO_LARGE',
+            message: `Request body exceeds the ${maxBytes}-byte limit`,
+            details: { maxBytes },
+        })
+        this.name = 'PayloadTooLargeError'
+        this.maxBytes = maxBytes
     }
 }
 

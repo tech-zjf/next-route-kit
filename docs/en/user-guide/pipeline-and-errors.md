@@ -15,7 +15,8 @@ Next params hydration
   → Interceptor exit
   → response serialization
 
-ExceptionFilter.catch() handles failures from the chain.
+ExceptionFilter.catch() handles failures from the chain, including response
+serialization failures.
 ```
 
 ## Middleware
@@ -30,7 +31,9 @@ const requestId: RouteMiddleware<ApiContext> = {
 }
 ```
 
-Middleware wraps downstream execution and must call `next()`. Calling it twice
+Middleware wraps downstream execution including Guards, making it the place for
+CORS, all-request logging, and total duration. It receives the pre-serialization
+chain result rather than the final HTTP Response. It must call `next()`. Calling it twice
 throws `DuplicateMiddlewareNextError`.
 
 ## Guard
@@ -67,8 +70,11 @@ const envelope: Interceptor<ApiContext> = {
 }
 ```
 
-Code before `next()` is the enter phase; code after `await next()` is the
-exit phase. If the downstream handler returns a native `Response`, preserve it
+An Interceptor wraps input resolution and the Handler only after Guards pass; it
+does not observe requests rejected directly by a Guard. Code before `next()` is
+the enter phase; code after `await next()` is the exit phase. Use this advanced
+extension point for envelopes, Handler result transforms, and post-auth caching.
+If the downstream handler returns a native `Response`, preserve it
 so its status, headers, and body remain unchanged.
 
 An Interceptor, like Middleware, may call `next()` only once. A duplicate call
@@ -97,6 +103,7 @@ or server-side logs instead.
 
 ## Responses
 
-Plain values use `jsonResponse()`. A native `Response` passes through
-unchanged, so streams, files, redirects, and explicit `204` responses stay
-native.
+Plain values use `jsonResponse()`. A native `Response` passes through by default,
+so streams, files, redirects, and explicit `204` responses stay native. A strict
+JSON scope can set `nativeResponse: 'reject'` to prevent Middleware, Guards, or
+Handlers from bypassing the serializer.
